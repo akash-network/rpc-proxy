@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -11,20 +10,27 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/caarlos0/env/v11"
 	"github.com/tendermint/tendermint/libs/log"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 func main() {
+	cfg := mustGetConfig()
+
 	logger, err := log.NewDefaultLogger(log.LogFormatText, "info", true)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		panic("could not setup logger: " + err.Error())
 	}
-	cfg, err := env.ParseAs[Config]()
-	if err != nil {
-		logger.Error("could not get config", "err", err)
-		os.Exit(1)
+
+	am := autocert.Manager{
+		Cache:  autocert.DirCache("."),
+		Prompt: autocert.AcceptTOS,
+	}
+	if addr := cfg.AutocertEmail; addr != "" {
+		am.Email = addr
+	}
+	if hosts := cfg.AutocertHosts; len(hosts) > 0 {
+		am.HostPolicy = autocert.HostWhitelist(hosts...)
 	}
 
 	m := http.NewServeMux()
@@ -33,9 +39,9 @@ func main() {
 	}))
 
 	srv := &http.Server{
-		Addr:    cfg.Listen,
-		Handler: m,
-		// TLSConfig:                    &tls.Config{}, TODO
+		Addr:      cfg.Listen,
+		Handler:   m,
+		TLSConfig: am.TLSConfig(),
 	}
 
 	go func() {
@@ -60,8 +66,4 @@ func main() {
 		logger.Error("could not close server", "err", err)
 		os.Exit(1)
 	}
-}
-
-type Config struct {
-	Listen string `env:"LISTEN" envDefault:":9090"`
 }
