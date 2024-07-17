@@ -4,23 +4,18 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/tendermint/tendermint/libs/log"
 	"golang.org/x/crypto/acme/autocert"
 )
 
 func main() {
 	cfg := mustGetConfig()
-
-	logger, err := log.NewDefaultLogger(log.LogFormatText, "info", true)
-	if err != nil {
-		panic("could not setup logger: " + err.Error())
-	}
 
 	am := autocert.Manager{
 		Cache:  autocert.DirCache("."),
@@ -33,25 +28,32 @@ func main() {
 		am.HostPolicy = autocert.HostWhitelist(hosts...)
 	}
 
+	proxyHandler := newProxy(cfg.SeedURL, cfg.SeedRefreshInterval)
+	proxyHandler.Start()
+
 	m := http.NewServeMux()
 	m.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, "Hello, world!")
+		_, _ = io.WriteString(w, "OK")
 	}))
+	m.Handle("/rpc", proxyHandler)
 
 	srv := &http.Server{
-		Addr:      cfg.Listen,
-		Handler:   m,
-		TLSConfig: am.TLSConfig(),
+		Addr:         cfg.Listen,
+		Handler:      m,
+		TLSConfig:    am.TLSConfig(),
+		ReadTimeout:  time.Second * 10,
+		IdleTimeout:  time.Second * 10,
+		WriteTimeout: time.Second * 10,
 	}
 
 	go func() {
-		logger.Info("starting server", "addr", cfg.Listen)
+		slog.Info("starting server", "addr", cfg.Listen)
 		if err := srv.ListenAndServe(); err != nil {
 			if errors.Is(err, http.ErrServerClosed) {
-				logger.Info("server shut down")
+				slog.Info("server shut down")
 				return
 			}
-			logger.Error("could not start server", "err", err)
+			slog.Error("could not start server", "err", err)
 			os.Exit(1)
 		}
 	}()
@@ -63,7 +65,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.Error("could not close server", "err", err)
+		slog.Error("could not close server", "err", err)
 		os.Exit(1)
 	}
 }
