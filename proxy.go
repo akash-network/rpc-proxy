@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"net/http"
 	"slices"
+	"sort"
 	"sync"
 	"time"
 )
@@ -24,6 +25,51 @@ type akashProxy struct {
 	round   int
 	mu      sync.Mutex
 	servers []*Server
+}
+
+type ServerStat struct {
+	Name        string
+	URL         string
+	Avg         time.Duration
+	Degraded    bool
+	Initialized bool
+}
+
+type serverStats []ServerStat
+
+func (st serverStats) Len() int      { return len(st) }
+func (st serverStats) Swap(i, j int) { st[i], st[j] = st[j], st[i] }
+func (st serverStats) Less(i, j int) bool {
+	si := st[i]
+	sj := st[j]
+	if si.Initialized && !sj.Initialized {
+		return true
+	}
+	if sj.Initialized && !si.Initialized {
+		return false
+	}
+	if si.Degraded && !sj.Degraded {
+		return false
+	}
+	if sj.Degraded && !si.Degraded {
+		return true
+	}
+	return si.Avg < sj.Avg
+}
+
+func (p *akashProxy) Stats() []ServerStat {
+	var result []ServerStat
+	for _, s := range p.servers {
+		result = append(result, ServerStat{
+			Name:        s.name,
+			URL:         s.url,
+			Avg:         s.pings.Last(),
+			Degraded:    !s.Healthy(),
+			Initialized: s.initialized.Load(),
+		})
+	}
+	sort.Sort(serverStats(result))
+	return result
 }
 
 func (p *akashProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {

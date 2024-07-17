@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"errors"
-	"io"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +14,9 @@ import (
 
 	"golang.org/x/crypto/acme/autocert"
 )
+
+//go:embed index.html
+var index []byte
 
 func main() {
 	cfg := mustGetConfig()
@@ -31,9 +35,13 @@ func main() {
 	proxyHandler := newProxy(cfg.SeedURL, cfg.SeedRefreshInterval)
 	proxyHandler.Start()
 
+	indexTpl := template.Must(template.New("stats").Parse(string(index)))
+
 	m := http.NewServeMux()
 	m.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, "OK")
+		if err := indexTpl.Execute(w, proxyHandler.Stats()); err != nil {
+			slog.Error("could render stats", "err", err)
+		}
 	}))
 	m.Handle("/rpc", proxyHandler)
 

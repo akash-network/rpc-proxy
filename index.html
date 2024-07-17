@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Akash Proxy</title>
+  </head>
+  <body>
+    <h1>Akash Proxy</h1>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>URL</th>
+          <th>Average response time</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range .}}
+        <tr>
+          <th>{{.Name}}</th>
+          <th>{{.URL}}</th>
+          <th>{{.Avg}}</th>
+          <th>
+            <!-- prettier-ignore -->
+            {{ if not .Initialized}}
+            not initialized
+            {{ else if .Degraded }}
+            degraded
+            {{else}}
+            OK
+            {{end}}
+          </th>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </body>
+</html>
