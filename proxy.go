@@ -97,7 +97,6 @@ func (p *akashProxy) next() *Server {
 	// give it 1% chance to improve its score
 	// TODO: customizable?
 	if rand.Intn(99) == 0 {
-		server.ResetStatistics()
 		slog.Warn("giving slow server a chance", "name", server.name, "avg", server.pings.Last())
 		return server
 	}

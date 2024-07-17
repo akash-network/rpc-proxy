@@ -32,10 +32,6 @@ type Server struct {
 	initialized atomic.Bool
 }
 
-func (s *Server) ResetStatistics() {
-	s.pings.Reset()
-}
-
 func (s *Server) Healthy() bool {
 	// TODO: configurable?
 	return s.pings.Last() < time.Second
@@ -55,4 +51,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	s.proxy.ServeHTTP(w, r.WithContext(ctx))
 	s.initialized.Store(true)
+	if !s.Healthy() && ctx.Err() == nil {
+		// if it's not healthy, this is a tryout to improve - if the request
+		// wasn't canceled, reset stats
+		slog.Info("resetting statistics", "name", s.name)
+		s.pings.Reset()
+	}
 }
