@@ -8,6 +8,7 @@ type ServerStat struct {
 	Avg         time.Duration
 	Degraded    bool
 	Initialized bool
+	Requests    int64
 }
 
 type serverStats []ServerStat

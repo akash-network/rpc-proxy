@@ -29,12 +29,12 @@ func newServer(name, addr string, healthyThreshold, requestTimeout time.Duration
 }
 
 type Server struct {
-	name        string
-	url         string
-	pings       *avg.MovingAverage
-	proxy       *httputil.ReverseProxy
-	initialized atomic.Bool
+	name  string
+	url   string
+	pings *avg.MovingAverage
+	proxy *httputil.ReverseProxy
 
+	requestCount     atomic.Int64
 	healthyThreshold time.Duration
 	requestTimeout   time.Duration
 }
@@ -55,7 +55,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.requestTimeout)
 	defer cancel()
 	s.proxy.ServeHTTP(w, r.WithContext(ctx))
-	s.initialized.Store(true)
+	s.requestCount.Add(1)
 	if !s.Healthy() && ctx.Err() == nil {
 		// if it's not healthy, this is a tryout to improve - if the request
 		// wasn't canceled, reset stats

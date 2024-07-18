@@ -31,12 +31,14 @@ type Proxy struct {
 func (p *Proxy) Stats() []ServerStat {
 	var result []ServerStat
 	for _, s := range p.servers {
+		reqCount := s.requestCount.Load()
 		result = append(result, ServerStat{
 			Name:        s.name,
 			URL:         s.url,
 			Avg:         s.pings.Last(),
 			Degraded:    !s.Healthy(),
-			Initialized: s.initialized.Load(),
+			Initialized: reqCount > 0,
+			Requests:    reqCount,
 		})
 	}
 	sort.Sort(serverStats(result))

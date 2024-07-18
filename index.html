@@ -13,6 +13,7 @@
           <th>Name</th>
           <th>URL</th>
           <th>Average response time</th>
+          <th>Request Count</th>
           <th>Status</th>
         </tr>
       </thead>
@@ -22,10 +23,11 @@
           <th>{{.Name}}</th>
           <th>{{.URL}}</th>
           <th>{{.Avg}}</th>
+          <th>{{.Requests}}</th>
           <th>
             <!-- prettier-ignore -->
             {{ if not .Initialized}}
-            not initialized
+            initializing
             {{ else if .Degraded }}
             degraded
             {{else}}
