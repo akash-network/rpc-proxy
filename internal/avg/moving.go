@@ -1,17 +1,17 @@
-package main
+package avg
 
 import (
 	"sync"
 	"time"
 )
 
-func NewPingAverage(window int) *PingMovingAverage {
-	return &PingMovingAverage{
+func Moving(window int) *MovingAverage {
+	return &MovingAverage{
 		window: window,
 	}
 }
 
-type PingMovingAverage struct {
+type MovingAverage struct {
 	mu        sync.Mutex
 	window    int
 	durations []time.Duration
@@ -20,7 +20,7 @@ type PingMovingAverage struct {
 	lastAvg   time.Duration
 }
 
-func (m *PingMovingAverage) Reset() {
+func (m *MovingAverage) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sum = 0
@@ -28,13 +28,13 @@ func (m *PingMovingAverage) Reset() {
 	m.durations = []time.Duration{}
 }
 
-func (m *PingMovingAverage) Last() time.Duration {
+func (m *MovingAverage) Last() time.Duration {
 	m.avgMu.RLock()
 	defer m.avgMu.RUnlock()
 	return m.lastAvg
 }
 
-func (m *PingMovingAverage) Next(d time.Duration) time.Duration {
+func (m *MovingAverage) Next(d time.Duration) time.Duration {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(m.durations) < m.window {

@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"context"
@@ -9,32 +9,38 @@ import (
 	"net/url"
 	"sync/atomic"
 	"time"
+
+	"github.com/akash-network/proxy/internal/avg"
 )
 
-func newServer(name, addr string) (*Server, error) {
+func newServer(name, addr string, healthyThreshold, requestTimeout time.Duration) (*Server, error) {
 	target, err := url.Parse(addr)
 	if err != nil {
 		return nil, fmt.Errorf("could not create new server: %w", err)
 	}
 	return &Server{
-		name:  name,
-		url:   addr,
-		pings: NewPingAverage(50),
-		proxy: httputil.NewSingleHostReverseProxy(target),
+		name:             name,
+		url:              addr,
+		pings:            avg.Moving(50),
+		proxy:            httputil.NewSingleHostReverseProxy(target),
+		healthyThreshold: healthyThreshold,
+		requestTimeout:   requestTimeout,
 	}, nil
 }
 
 type Server struct {
 	name        string
 	url         string
-	pings       *PingMovingAverage
+	pings       *avg.MovingAverage
 	proxy       *httputil.ReverseProxy
 	initialized atomic.Bool
+
+	healthyThreshold time.Duration
+	requestTimeout   time.Duration
 }
 
 func (s *Server) Healthy() bool {
-	// TODO: configurable?
-	return s.pings.Last() < time.Second
+	return s.pings.Last() < s.healthyThreshold
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -46,8 +52,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	slog.Info("proxying request", "name", s.name)
-	// TODO: configurable timeout?
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+	ctx, cancel := context.WithTimeout(r.Context(), s.requestTimeout)
 	defer cancel()
 	s.proxy.ServeHTTP(w, r.WithContext(ctx))
 	s.initialized.Store(true)

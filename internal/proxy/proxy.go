@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"log/slog"
@@ -8,26 +8,27 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/akash-network/proxy/internal/config"
+	"github.com/akash-network/proxy/internal/seed"
 )
 
-func newProxy(seed string, interval time.Duration) *akashProxy {
-	return &akashProxy{
-		url:      seed,
-		interval: interval,
+func New(cfg config.Config) *Proxy {
+	return &Proxy{
+		cfg: cfg,
 	}
 }
 
-type akashProxy struct {
-	url      string
-	interval time.Duration
-	init     sync.Once
+type Proxy struct {
+	cfg  config.Config
+	init sync.Once
 
 	round   int
 	mu      sync.Mutex
 	servers []*Server
 }
 
-func (p *akashProxy) Stats() []ServerStat {
+func (p *Proxy) Stats() []ServerStat {
 	var result []ServerStat
 	for _, s := range p.servers {
 		result = append(result, ServerStat{
@@ -42,7 +43,7 @@ func (p *akashProxy) Stats() []ServerStat {
 	return result
 }
 
-func (p *akashProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if srv := p.next(); srv != nil {
 		srv.ServeHTTP(w, r)
 		return
@@ -52,7 +53,7 @@ func (p *akashProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusInternalServerError)
 }
 
-func (p *akashProxy) next() *Server {
+func (p *Proxy) next() *Server {
 	p.mu.Lock()
 	if len(p.servers) == 0 {
 		p.mu.Unlock()
@@ -64,9 +65,7 @@ func (p *akashProxy) next() *Server {
 	if server.Healthy() {
 		return server
 	}
-	// give it 1% chance to improve its score
-	// TODO: customizable?
-	if rand.Intn(99) == 0 {
+	if rand.Intn(99)+1 < p.cfg.UnhealthyServerRecoverChancePct {
 		slog.Warn("giving slow server a chance", "name", server.name, "avg", server.pings.Last())
 		return server
 	}
@@ -74,7 +73,7 @@ func (p *akashProxy) next() *Server {
 	return p.next()
 }
 
-func (p *akashProxy) update(rpcs []RPC) error {
+func (p *Proxy) update(rpcs []seed.RPC) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -82,7 +81,12 @@ func (p *akashProxy) update(rpcs []RPC) error {
 	for _, rpc := range rpcs {
 		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == rpc.Provider })
 		if idx == -1 {
-			srv, err := newServer(rpc.Provider, rpc.Address)
+			srv, err := newServer(
+				rpc.Provider,
+				rpc.Address,
+				p.cfg.HealthyThreshold,
+				p.cfg.ProxyRequestTimeout,
+			)
 			if err != nil {
 				return err
 			}
@@ -105,29 +109,30 @@ func (p *akashProxy) update(rpcs []RPC) error {
 	return nil
 }
 
-func (p *akashProxy) Start() {
+func (p *Proxy) Start() {
 	p.init.Do(func() {
 		go func() {
-			t := time.NewTicker(p.interval)
+			t := time.NewTicker(p.cfg.SeedRefreshInterval)
+			defer t.Stop()
 			for range t.C {
-				seed, err := fetchSeed(p.url)
-				if err != nil {
-					slog.Error("could not fetch seed", "err", err)
-					continue
-				}
-				if err := p.update(seed.Apis.RPC); err != nil {
-					slog.Error("could not update servers", "err", err)
-					continue
-				}
+				p.fetchAndUpdate()
 			}
 		}()
-
-		seed, err := fetchSeed(p.url)
-		if err != nil {
-			slog.Error("could not get initial seed list", "err", err)
-		}
-		if err := p.update(seed.Apis.RPC); err != nil {
-			slog.Error("could not update servers", "err", err)
-		}
+		p.fetchAndUpdate()
 	})
+}
+
+func (p *Proxy) fetchAndUpdate() {
+	result, err := seed.Fetch(p.cfg.SeedURL)
+	if err != nil {
+		slog.Error("could not get initial seed list", "err", err)
+		return
+	}
+	if result.ChainID != p.cfg.ChainID {
+		slog.Error("chain ID is different than expected", "got", result.ChainID, "expected", p.cfg.ChainID)
+		return
+	}
+	if err := p.update(result.Apis.RPC); err != nil {
+		slog.Error("could not update servers", "err", err)
+	}
 }

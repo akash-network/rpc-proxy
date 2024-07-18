@@ -1,4 +1,4 @@
-package main
+package seed
 
 import (
 	"encoding/json"
@@ -22,7 +22,7 @@ type Apis struct {
 	RPC []RPC `json:"rpc"`
 }
 
-func fetchSeed(url string) (Seed, error) {
+func Fetch(url string) (Seed, error) {
 	var seed Seed
 	resp, err := http.Get(url)
 	if err != nil {
@@ -32,6 +32,7 @@ func fetchSeed(url string) (Seed, error) {
 	if resp.StatusCode != 200 {
 		return seed, fmt.Errorf("request failed: %s", resp.Status)
 	}
+
 	bts, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return seed, fmt.Errorf("read seed: %w", err)

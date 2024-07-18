@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/akash-network/proxy/internal/config"
+	"github.com/akash-network/proxy/internal/proxy"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -19,7 +21,7 @@ import (
 var index []byte
 
 func main() {
-	cfg := mustGetConfig()
+	cfg := config.Must()
 
 	am := autocert.Manager{
 		Cache:  autocert.DirCache("."),
@@ -32,7 +34,7 @@ func main() {
 		am.HostPolicy = autocert.HostWhitelist(hosts...)
 	}
 
-	proxyHandler := newProxy(cfg.SeedURL, cfg.SeedRefreshInterval)
+	proxyHandler := proxy.New(cfg)
 	proxyHandler.Start()
 
 	indexTpl := template.Must(template.New("stats").Parse(string(index)))
