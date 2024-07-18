@@ -6,6 +6,7 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
+//go:generate go run github.com/g4s8/envdoc@latest -output ../../config.md -type Config
 type Config struct {
 	// Address to listen to.
 	Listen string `env:"LISTEN" envDefault:":https"`
