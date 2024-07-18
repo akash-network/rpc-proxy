@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/rand"
 	"testing"
 	"time"
 
@@ -10,22 +11,29 @@ import (
 func TestMovingDurationAverageTest(t *testing.T) {
 	t.Run("window-1", func(t *testing.T) {
 		a := NewPingAverage(1)
-		n := a.Next(5 * time.Second)
-		n = a.Next(10 * time.Second)
-		n = a.Next(time.Second)
-		l := a.Last()
-		require.Equal(t, time.Second, n)
-		require.Equal(t, time.Second, l)
+		_ = a.Next(5 * time.Second)
+		_ = a.Next(10 * time.Second)
+		require.Equal(t, time.Second, a.Next(time.Second))
+		require.Equal(t, time.Second, a.Last())
 	})
 
 	t.Run("window-2", func(t *testing.T) {
 		a := NewPingAverage(2)
-		n := a.Next(5 * time.Second)
-		n = a.Next(10 * time.Second)
-		n = a.Next(2 * time.Second)
-		n = a.Next(10 * time.Second)
-		l := a.Last()
-		require.Equal(t, 6*time.Second, n)
-		require.Equal(t, 6*time.Second, l)
+		_ = a.Next(5 * time.Second)
+		_ = a.Next(10 * time.Second)
+		_ = a.Next(2 * time.Second)
+		expected := 6 * time.Second
+		require.Equal(t, expected, a.Next(10*time.Second))
+		require.Equal(t, expected, a.Last())
+	})
+
+	t.Run("reset", func(t *testing.T) {
+		a := NewPingAverage(2)
+		for i := 0; i < 10; i++ {
+			_ = a.Next(time.Duration(rand.Intn(100)) * time.Second)
+		}
+		require.NotZero(t, a.Last())
+		a.Reset()
+		require.Zero(t, a.Last())
 	})
 }
