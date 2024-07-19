@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/akash-network/proxy/internal/config"
-	"github.com/akash-network/proxy/internal/proxy"
+	"github.com/akash-network/rpc-proxy/internal/config"
+	"github.com/akash-network/rpc-proxy/internal/proxy"
 	"golang.org/x/crypto/acme/autocert"
 )
 

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akash-network/proxy/internal/config"
-	"github.com/akash-network/proxy/internal/seed"
+	"github.com/akash-network/rpc-proxy/internal/config"
+	"github.com/akash-network/rpc-proxy/internal/seed"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )

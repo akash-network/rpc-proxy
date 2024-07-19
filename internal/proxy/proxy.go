@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/akash-network/proxy/internal/config"
-	"github.com/akash-network/proxy/internal/seed"
+	"github.com/akash-network/rpc-proxy/internal/config"
+	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
 func New(cfg config.Config) *Proxy {

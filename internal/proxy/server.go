@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/akash-network/proxy/internal/avg"
+	"github.com/akash-network/rpc-proxy/internal/avg"
 )
 
 func newServer(name, addr string, healthyThreshold, requestTimeout time.Duration) (*Server, error) {

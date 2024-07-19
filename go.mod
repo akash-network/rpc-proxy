@@ -1,4 +1,4 @@
-module github.com/akash-network/proxy
+module github.com/akash-network/rpc-proxy
 
 go 1.22.5
 
