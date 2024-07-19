@@ -24,7 +24,9 @@ func (m *MovingAverage) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sum = 0
+	m.avgMu.Lock()
 	m.lastAvg = 0
+	m.avgMu.Unlock()
 	m.durations = []time.Duration{}
 }
 

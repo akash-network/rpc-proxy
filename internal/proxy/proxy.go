@@ -1,12 +1,14 @@
 package proxy
 
 import (
+	"context"
 	"log/slog"
 	"math/rand"
 	"net/http"
 	"slices"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/akash-network/proxy/internal/config"
@@ -26,6 +28,8 @@ type Proxy struct {
 	round   int
 	mu      sync.Mutex
 	servers []*Server
+
+	shuttingDown atomic.Bool
 }
 
 func (p *Proxy) Stats() []ServerStat {
@@ -46,6 +50,12 @@ func (p *Proxy) Stats() []ServerStat {
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if p.shuttingDown.Load() {
+		slog.Error("proxy is shutting down")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	if srv := p.next(); srv != nil {
 		srv.ServeHTTP(w, r)
 		return
@@ -111,13 +121,19 @@ func (p *Proxy) update(rpcs []seed.RPC) error {
 	return nil
 }
 
-func (p *Proxy) Start() {
+func (p *Proxy) Start(ctx context.Context) {
 	p.init.Do(func() {
 		go func() {
 			t := time.NewTicker(p.cfg.SeedRefreshInterval)
 			defer t.Stop()
-			for range t.C {
-				p.fetchAndUpdate()
+			for {
+				select {
+				case <-t.C:
+					p.fetchAndUpdate()
+				case <-ctx.Done():
+					p.shuttingDown.Store(true)
+					return
+				}
 			}
 		}()
 		p.fetchAndUpdate()

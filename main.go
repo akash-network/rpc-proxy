@@ -35,7 +35,10 @@ func main() {
 	}
 
 	proxyHandler := proxy.New(cfg)
-	proxyHandler.Start()
+
+	proxyCtx, proxyCtxCancel := context.WithCancel(context.Background())
+	defer proxyCtxCancel()
+	proxyHandler.Start(proxyCtx)
 
 	indexTpl := template.Must(template.New("stats").Parse(string(index)))
 
@@ -72,9 +75,11 @@ func main() {
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	<-done
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	proxyCtxCancel()
+
+	proxyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(proxyCtx); err != nil {
 		slog.Error("could not close server", "err", err)
 		os.Exit(1)
 	}
