@@ -39,7 +39,7 @@ func (p *Proxy) Stats() []ServerStat {
 		reqCount := s.requestCount.Load()
 		result = append(result, ServerStat{
 			Name:        s.name,
-			URL:         s.url,
+			URL:         s.url.String(),
 			Avg:         s.pings.Last(),
 			Degraded:    !s.Healthy(),
 			Initialized: reqCount > 0,

@@ -6,7 +6,7 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
-//go:generate go run github.com/g4s8/envdoc@latest -output ../../config.md -type Config
+//go:generate go run github.com/g4s8/envdoc@latest -output ../../config.md -env-prefix AKASH_PROXY_ -type Config
 type Config struct {
 	// Address to listen to.
 	Listen string `env:"LISTEN" envDefault:":https"`
@@ -17,8 +17,11 @@ type Config struct {
 	// Autocert domains.
 	AutocertHosts []string `env:"AUTOCERT_HOSTS"`
 
+	// TLS certificate to use. If empty, will try to use autocert.
 	TLSCert string `env:"TLS_CERT"`
-	TLSKey  string `env:"TLS_KEY"`
+
+	// TLS key to use. If empty, will try to use autocert.
+	TLSKey string `env:"TLS_KEY"`
 
 	// Proxy seed URL to fetch for server updates.
 	SeedURL string `env:"SEED_URL" envDefault:"https://raw.githubusercontent.com/cosmos/chain-registry/master/akash/chain.json"`
@@ -30,10 +33,10 @@ type Config struct {
 	ChainID string `env:"CHAIN_ID" envDefault:"akashnet-2"`
 
 	// How slow on average a node needs to be to be marked as unhealthy.
-	HealthyThreshold time.Duration `env:"HEALTHY_THRESHOLD" envDefault:"1s"`
+	HealthyThreshold time.Duration `env:"HEALTHY_THRESHOLD" envDefault:"10s"`
 
 	// Request timeout for a proxied request.
-	ProxyRequestTimeout time.Duration `env:"PROXY_REQUEST_TIMEOUT" envDefault:"5s"`
+	ProxyRequestTimeout time.Duration `env:"PROXY_REQUEST_TIMEOUT" envDefault:"15s"`
 
 	// How much chance (in %, 0-100), a node marked as unhealthy have to get a
 	// request again and recover.

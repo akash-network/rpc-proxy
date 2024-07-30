@@ -64,7 +64,14 @@ func main() {
 	}
 	go func() {
 		slog.Info("starting server", "addr", cfg.Listen)
-		if err := srv.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey); err != nil {
+		var err error
+		// TODO: find a better way to set this.
+		if cfg.Listen == ":https" {
+			err = srv.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)
+		} else {
+			err = srv.ListenAndServe()
+		}
+		if err != nil {
 			if errors.Is(err, http.ErrServerClosed) {
 				slog.Info("server shut down")
 				return
