@@ -30,10 +30,10 @@ type Config struct {
 	ChainID string `env:"CHAIN_ID" envDefault:"akashnet-2"`
 
 	// How slow on average a node needs to be to be marked as unhealthy.
-	HealthyThreshold time.Duration `env:"HEALTHY_THRESHOLD" envDefault:"1s"`
+	HealthyThreshold time.Duration `env:"HEALTHY_THRESHOLD" envDefault:"10s"`
 
 	// Request timeout for a proxied request.
-	ProxyRequestTimeout time.Duration `env:"PROXY_REQUEST_TIMEOUT" envDefault:"5s"`
+	ProxyRequestTimeout time.Duration `env:"PROXY_REQUEST_TIMEOUT" envDefault:"15s"`
 
 	// How much chance (in %, 0-100), a node marked as unhealthy have to get a
 	// request again and recover.
