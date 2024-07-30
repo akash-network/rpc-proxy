@@ -6,7 +6,7 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
-//go:generate go run github.com/g4s8/envdoc@latest -output ../../config.md -type Config
+//go:generate go run github.com/g4s8/envdoc@latest -output ../../config.md -env-prefix AKASH_PROXY_ -type Config
 type Config struct {
 	// Address to listen to.
 	Listen string `env:"LISTEN" envDefault:":https"`
@@ -17,8 +17,11 @@ type Config struct {
 	// Autocert domains.
 	AutocertHosts []string `env:"AUTOCERT_HOSTS"`
 
+	// TLS certificate to use. If empty, will try to use autocert.
 	TLSCert string `env:"TLS_CERT"`
-	TLSKey  string `env:"TLS_KEY"`
+
+	// TLS key to use. If empty, will try to use autocert.
+	TLSKey string `env:"TLS_KEY"`
 
 	// Proxy seed URL to fetch for server updates.
 	SeedURL string `env:"SEED_URL" envDefault:"https://raw.githubusercontent.com/cosmos/chain-registry/master/akash/chain.json"`
