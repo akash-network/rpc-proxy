@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,6 +57,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rpc")
 	if srv := p.next(); srv != nil {
 		srv.ServeHTTP(w, r)
 		return
