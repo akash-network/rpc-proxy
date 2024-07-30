@@ -43,12 +43,12 @@ func main() {
 	indexTpl := template.Must(template.New("stats").Parse(string(index)))
 
 	m := http.NewServeMux()
+	m.Handle("/rpc", proxyHandler)
 	m.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := indexTpl.Execute(w, proxyHandler.Stats()); err != nil {
 			slog.Error("could render stats", "err", err)
 		}
 	}))
-	m.Handle("/rpc", proxyHandler)
 
 	srv := &http.Server{
 		Addr:         cfg.Listen,
@@ -59,9 +59,12 @@ func main() {
 		WriteTimeout: time.Second * 10,
 	}
 
+	if cfg.TLSCert != "" && cfg.TLSKey != "" {
+		srv.TLSConfig = nil
+	}
 	go func() {
 		slog.Info("starting server", "addr", cfg.Listen)
-		if err := srv.ListenAndServe(); err != nil {
+		if err := srv.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey); err != nil {
 			if errors.Is(err, http.ErrServerClosed) {
 				slog.Info("server shut down")
 				return

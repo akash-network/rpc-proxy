@@ -17,6 +17,9 @@ type Config struct {
 	// Autocert domains.
 	AutocertHosts []string `env:"AUTOCERT_HOSTS"`
 
+	TLSCert string `env:"TLS_CERT"`
+	TLSKey  string `env:"TLS_KEY"`
+
 	// Proxy seed URL to fetch for server updates.
 	SeedURL string `env:"SEED_URL" envDefault:"https://raw.githubusercontent.com/cosmos/chain-registry/master/akash/chain.json"`
 
