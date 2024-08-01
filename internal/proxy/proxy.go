@@ -30,8 +30,12 @@ type Proxy struct {
 	mu      sync.Mutex
 	servers []*Server
 
+	initialized  atomic.Bool
 	shuttingDown atomic.Bool
 }
+
+func (p *Proxy) Ready() bool { return p.initialized.Load() }
+func (p *Proxy) Live() bool  { return !p.shuttingDown.Load() && p.initialized.Load() }
 
 func (p *Proxy) Stats() []ServerStat {
 	var result []ServerStat
@@ -120,6 +124,7 @@ func (p *Proxy) update(rpcs []seed.RPC) error {
 	})
 
 	slog.Info("updated server list", "total", len(p.servers))
+	p.initialized.Store(true)
 	return nil
 }
 

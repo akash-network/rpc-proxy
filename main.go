@@ -43,6 +43,16 @@ func main() {
 	indexTpl := template.Must(template.New("stats").Parse(string(index)))
 
 	m := http.NewServeMux()
+	m.Handle("/health/ready", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !proxyHandler.Ready() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	m.Handle("/health/live", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !proxyHandler.Live() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
 	m.Handle("/rpc", proxyHandler)
 	m.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := indexTpl.Execute(w, proxyHandler.Stats()); err != nil {
