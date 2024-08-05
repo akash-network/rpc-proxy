@@ -85,7 +85,7 @@ docker_manifests:
     image_templates:
       - "ghcr.io/akash-network/rpc-proxy:{{ .Version }}-amd64"
       - "ghcr.io/akash-network/rpc-proxy:{{ .Version }}-arm64"
-  - name_template: "{{ .Env.DOCKER_IMAGE }}:latest"
+  - name_template: "ghcr.io/akash-network/rpc-proxy:latest"
     image_templates:
       - "ghcr.io/akash-network/rpc-proxy:{{ .Version }}-amd64"
       - "ghcr.io/akash-network/rpc-proxy:{{ .Version }}-arm64"
