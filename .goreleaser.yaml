@@ -1,0 +1,91 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: akash-rpc-proxy
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+nfpms:
+  - vendor: "Akash Network"
+    homepage: "https://akash.network"
+    maintainer: "Akash Network <hello@akash.network>"
+    license: Apache 2.0
+    formats:
+      - apk
+      - deb
+      - rpm
+
+dockers:
+  - dockerfile: Dockerfile
+    use: buildx
+    goarch: amd64
+    goos: linux
+    build_flag_templates:
+      - --platform=linux/amd64
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description={{ .ProjectName }}
+      - --label=org.opencontainers.image.url={{.GitURL}}
+      - --label=org.opencontainers.image.source={{.GitURL}}
+      - --label=org.opencontainers.image.version={{ .Version }}
+      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+    image_templates:
+      - "ghcr.io/akash-network/rpc-proxy:{{ .Version }}-amd64"
+  - dockerfile: Dockerfile
+    use: buildx
+    goarch: arm64
+    goos: linux
+    build_flag_templates:
+      - --platform=linux/arm64
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description={{ .ProjectName }}
+      - --label=org.opencontainers.image.url={{.GitURL}}
+      - --label=org.opencontainers.image.source={{.GitURL}}
+      - --label=org.opencontainers.image.version={{ .Version }}
+      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+    image_templates:
+      - "ghcr.io/akash-network/rpc-proxy:{{ .Version }}-arm64"
+
+docker_manifests:
+  - name_template: "ghcr.io/akash-network/rpc-proxy:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/akash-network/rpc-proxy:{{ .Version }}-amd64"
+      - "ghcr.io/akash-network/rpc-proxy:{{ .Version }}-arm64"
+  - name_template: "{{ .Env.DOCKER_IMAGE }}:latest"
+    image_templates:
+      - "ghcr.io/akash-network/rpc-proxy:{{ .Version }}-amd64"
+      - "ghcr.io/akash-network/rpc-proxy:{{ .Version }}-arm64"
