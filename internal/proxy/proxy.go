@@ -2,6 +2,9 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -20,6 +23,49 @@ func New(cfg config.Config) *Proxy {
 	return &Proxy{
 		cfg: cfg,
 	}
+}
+
+type StatusResponse struct {
+    Jsonrpc string `json:"jsonrpc"`
+    ID      int    `json:"id"`
+    Result  struct {
+        NodeInfo struct {
+            ProtocolVersion struct {
+                P2P   string `json:"p2p"`
+                Block string `json:"block"`
+                App   string `json:"app"`
+            } `json:"protocol_version"`
+            ID         string `json:"id"`
+            ListenAddr string `json:"listen_addr"`
+            Network    string `json:"network"`
+            Version    string `json:"version"`
+            Channels   string `json:"channels"`
+            Moniker    string `json:"moniker"`
+            Other      struct {
+                TxIndex    string `json:"tx_index"`
+                RPCAddress string `json:"rpc_address"`
+            } `json:"other"`
+        } `json:"node_info"`
+        SyncInfo struct {
+            LatestBlockHash     string    `json:"latest_block_hash"`
+            LatestAppHash       string    `json:"latest_app_hash"`
+            LatestBlockHeight   string    `json:"latest_block_height"`
+            LatestBlockTime     time.Time `json:"latest_block_time"`
+            EarliestBlockHash   string    `json:"earliest_block_hash"`
+            EarliestAppHash     string    `json:"earliest_app_hash"`
+            EarliestBlockHeight string    `json:"earliest_block_height"`
+            EarliestBlockTime   time.Time `json:"earliest_block_time"`
+            CatchingUp          bool      `json:"catching_up"`
+        } `json:"sync_info"`
+        ValidatorInfo struct {
+            Address     string `json:"address"`
+            PubKey      struct {
+                Type  string `json:"type"`
+                Value string `json:"value"`
+            } `json:"pub_key"`
+            VotingPower string `json:"voting_power"`
+        } `json:"validator_info"`
+    } `json:"result"`
 }
 
 type Proxy struct {
@@ -71,6 +117,43 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusInternalServerError)
 }
 
+func checkSingleRPC(url string) error {
+    req, err := http.NewRequest("GET", url+"/status", nil)
+    if err != nil {
+        return fmt.Errorf("error creating request: %v", err)
+    }
+    client := &http.Client{Timeout: 2 * time.Second}
+    resp, err := client.Do(req)
+    if err != nil {
+        return fmt.Errorf("error making request: %v", err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+    }
+
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return fmt.Errorf("error reading response body: %v", err)
+    }
+
+    var status StatusResponse
+    if err := json.Unmarshal(body, &status); err != nil {
+        return fmt.Errorf("error unmarshaling JSON: %v", err)
+    }
+
+    if status.Result.SyncInfo.CatchingUp {
+        return fmt.Errorf("node is still catching up")
+    }
+
+    if !status.Result.SyncInfo.LatestBlockTime.After(time.Now().Add(-time.Minute)) {
+        return fmt.Errorf("latest block time is more than 1 minute old")
+    }
+
+    return nil
+}
+
 func (p *Proxy) next() *Server {
 	p.mu.Lock()
 	if len(p.servers) == 0 {
@@ -104,6 +187,7 @@ func (p *Proxy) update(rpcs []seed.RPC) error {
 				rpc.Address,
 				p.cfg.HealthyThreshold,
 				p.cfg.ProxyRequestTimeout,
+				p.cfg.CheckHealthInterval,
 			)
 			if err != nil {
 				return err
@@ -115,7 +199,7 @@ func (p *Proxy) update(rpcs []seed.RPC) error {
 	// remove deleted servers
 	p.servers = slices.DeleteFunc(p.servers, func(srv *Server) bool {
 		for _, rpc := range rpcs {
-			if rpc.Provider == srv.name {
+			if rpc.Provider == srv.name && srv.healthy.Load() {
 				return false
 			}
 		}

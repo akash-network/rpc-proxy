@@ -35,6 +35,9 @@ type Config struct {
 	// How slow on average a node needs to be to be marked as unhealthy.
 	HealthyThreshold time.Duration `env:"HEALTHY_THRESHOLD" envDefault:"10s"`
 
+	// Check Health on endpoints.
+	CheckHealthInterval time.Duration `env:"HEALTH_INTERVAL" envDefault:"5m"`
+
 	// Request timeout for a proxied request.
 	ProxyRequestTimeout time.Duration `env:"PROXY_REQUEST_TIMEOUT" envDefault:"15s"`
 

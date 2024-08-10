@@ -13,32 +13,59 @@ import (
 	"github.com/akash-network/rpc-proxy/internal/avg"
 )
 
-func newServer(name, addr string, healthyThreshold, requestTimeout time.Duration) (*Server, error) {
+func newServer(name, addr string, healthyThreshold, requestTimeout time.Duration, healthInterval time.Duration) (*Server, error) {
 	target, err := url.Parse(addr)
 	if err != nil {
 		return nil, fmt.Errorf("could not create new server: %w", err)
 	}
-	return &Server{
+
+	server := &Server{
 		name:             name,
 		url:              target,
 		pings:            avg.Moving(50),
 		healthyThreshold: healthyThreshold,
 		requestTimeout:   requestTimeout,
-	}, nil
+		lastHealthCheck:  time.Now().UTC(),
+		healthInterval:   healthInterval,
+		healthy:          atomic.Bool{},
+	}
+
+	err = checkSingleRPC(addr)
+	server.healthy.Store(err == nil)
+
+	return server, nil
 }
 
 type Server struct {
-	name  string
-	url   *url.URL
-	pings *avg.MovingAverage
+	name            string
+	url             *url.URL
+	pings           *avg.MovingAverage
+	lastHealthCheck time.Time
+	healthy         atomic.Bool
 
 	requestCount     atomic.Int64
+	healthInterval   time.Duration
 	healthyThreshold time.Duration
 	requestTimeout   time.Duration
 }
 
 func (s *Server) Healthy() bool {
-	return s.pings.Last() < s.healthyThreshold
+	now := time.Now().UTC()
+	if now.Sub(s.lastHealthCheck) >= s.healthInterval {
+		slog.Info("checking health", "name", s.name)
+		err := checkSingleRPC(s.url.String())
+		healthy := err == nil
+		s.healthy.Store(healthy)
+		s.lastHealthCheck = now
+
+		if healthy {
+			slog.Info("server is healthy", "name", s.name)
+		} else {
+			slog.Error("server is unhealthy", "name", s.name, "err", err)
+		}
+	}
+
+	return s.pings.Last() < s.healthyThreshold && s.healthy.Load()
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
