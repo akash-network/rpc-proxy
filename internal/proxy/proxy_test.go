@@ -68,7 +68,7 @@ func TestProxy(t *testing.T) {
 		ProxyRequestTimeout:             time.Second,
 		UnhealthyServerRecoverChancePct: 1,
 		HealthyErrorRateThreshold:       10,
-		HealthyErrorRateBucketTimeout:   time.Second,
+		HealthyErrorRateBucketTimeout:   time.Second * 10,
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
