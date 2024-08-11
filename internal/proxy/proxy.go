@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"slices"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,6 +47,7 @@ func (p *Proxy) Stats() []ServerStat {
 			Degraded:    !s.Healthy(),
 			Initialized: reqCount > 0,
 			Requests:    reqCount,
+			ErrorRate:   s.ErrorRate(),
 		})
 	}
 	sort.Sort(serverStats(result))
@@ -61,7 +61,6 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rpc")
 	if srv := p.next(); srv != nil {
 		srv.ServeHTTP(w, r)
 		return
@@ -80,7 +79,7 @@ func (p *Proxy) next() *Server {
 	server := p.servers[p.round%len(p.servers)]
 	p.round++
 	p.mu.Unlock()
-	if server.Healthy() {
+	if server.Healthy() && server.ErrorRate() <= p.cfg.HealthyErrorRateThreshold {
 		return server
 	}
 	if rand.Intn(99)+1 < p.cfg.UnhealthyServerRecoverChancePct {
@@ -102,8 +101,7 @@ func (p *Proxy) update(rpcs []seed.RPC) error {
 			srv, err := newServer(
 				rpc.Provider,
 				rpc.Address,
-				p.cfg.HealthyThreshold,
-				p.cfg.ProxyRequestTimeout,
+				p.cfg,
 			)
 			if err != nil {
 				return err

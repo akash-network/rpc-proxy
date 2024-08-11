@@ -6,7 +6,7 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
-//go:generate go run github.com/g4s8/envdoc@latest -output ../../config.md -env-prefix AKASH_PROXY_ -type Config
+//go:generate go run github.com/g4s8/envdoc@latest -output ../../config.md -env-prefix AKASH_PROXY_ -types Config
 type Config struct {
 	// Address to listen to.
 	Listen string `env:"LISTEN" envDefault:":https"`
@@ -34,6 +34,12 @@ type Config struct {
 
 	// How slow on average a node needs to be to be marked as unhealthy.
 	HealthyThreshold time.Duration `env:"HEALTHY_THRESHOLD" envDefault:"10s"`
+
+	// Percentage of request errors deemed acceptable.
+	HealthyErrorRateThreshold float64 `env:"HEALTHY_ERROR_RATE_THRESHOLD" envDefault:"30"`
+
+	// How long in the past requests are considered to check for status codes.
+	HealthyErrorRateBucketTimeout time.Duration `env:"HEALTHY_ERROR_RATE_BUCKET_TIMEOUT" envDefault:"1m"`
 
 	// Request timeout for a proxied request.
 	ProxyRequestTimeout time.Duration `env:"PROXY_REQUEST_TIMEOUT" envDefault:"15s"`
