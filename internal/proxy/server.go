@@ -56,11 +56,12 @@ func (s *Server) Healthy() bool {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var status int
 	start := time.Now()
 	defer func() {
 		d := time.Since(start)
 		avg := s.pings.Next(d)
-		slog.Info("request done", "name", s.name, "avg", avg, "last", d)
+		slog.Info("request done", "name", s.name, "avg", avg, "last", d, "status", status)
 	}()
 
 	proxiedURL := r.URL
@@ -86,6 +87,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	resp, err := http.DefaultClient.Do(rr.WithContext(ctx))
+	status = resp.StatusCode
 	if err == nil {
 		defer resp.Body.Close()
 		for k, v := range resp.Header {
