@@ -22,6 +22,7 @@ func TestCompareServerStats(t *testing.T) {
 			Avg:         time.Second,
 			Degraded:    false,
 			Initialized: true,
+			ErrorRate:   10,
 		},
 		{
 			Name:        "2",
@@ -46,9 +47,16 @@ func TestCompareServerStats(t *testing.T) {
 			Avg:         0,
 			Degraded:    true,
 			Initialized: true,
+			ErrorRate:   15,
 		},
 	}
 	t.Log(names(v))
 	sort.Sort(serverStats(v))
-	require.Equal(t, []string{"4", "1", "5", "2", "3"}, names(v))
+	require.Equal(t, []string{
+		"4",
+		"1",
+		"2",
+		"5",
+		"3",
+	}, names(v))
 }
