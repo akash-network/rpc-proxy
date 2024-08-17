@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,14 +16,23 @@ import (
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
-func New(cfg config.Config) *Proxy {
+type ProxyKind uint8
+
+const (
+	RPC  ProxyKind = iota
+	Rest ProxyKind = iota
+)
+
+func New(kind ProxyKind, cfg config.Config) *Proxy {
 	return &Proxy{
-		cfg: cfg,
+		cfg:  cfg,
+		kind: kind,
 	}
 }
 
 type Proxy struct {
 	cfg  config.Config
+	kind ProxyKind
 	init sync.Once
 
 	round   int
@@ -61,10 +71,16 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	switch p.kind {
+	case RPC:
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rpc")
+	case Rest:
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rest")
+	}
+
 	if srv := p.next(); srv != nil {
 		srv.ServeHTTP(w, r)
 		return
-
 	}
 	slog.Error("no servers available")
 	w.WriteHeader(http.StatusInternalServerError)
@@ -90,17 +106,18 @@ func (p *Proxy) next() *Server {
 	return p.next()
 }
 
-func (p *Proxy) update(rpcs []seed.RPC) error {
+// TODO: move this to another thing, share it with multiple proxies
+func (p *Proxy) update(providers []seed.Provider) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	// add new servers
-	for _, rpc := range rpcs {
-		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == rpc.Provider })
+	for _, provider := range providers {
+		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == provider.Provider })
 		if idx == -1 {
 			srv, err := newServer(
-				rpc.Provider,
-				rpc.Address,
+				provider.Provider,
+				provider.Address,
 				p.cfg,
 			)
 			if err != nil {
@@ -112,8 +129,8 @@ func (p *Proxy) update(rpcs []seed.RPC) error {
 
 	// remove deleted servers
 	p.servers = slices.DeleteFunc(p.servers, func(srv *Server) bool {
-		for _, rpc := range rpcs {
-			if rpc.Provider == srv.name {
+		for _, provider := range providers {
+			if provider.Provider == srv.name {
 				return false
 			}
 		}
@@ -155,7 +172,14 @@ func (p *Proxy) fetchAndUpdate() {
 		slog.Error("chain ID is different than expected", "got", result.ChainID, "expected", p.cfg.ChainID)
 		return
 	}
-	if err := p.update(result.Apis.RPC); err != nil {
-		slog.Error("could not update servers", "err", err)
+	switch p.kind {
+	case RPC:
+		if err := p.update(result.APIs.RPC); err != nil {
+			slog.Error("could not update servers", "err", err)
+		}
+	case Rest:
+		if err := p.update(result.APIs.Rest); err != nil {
+			slog.Error("could not update servers", "err", err)
+		}
 	}
 }

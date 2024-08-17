@@ -34,8 +34,8 @@ func TestProxy(t *testing.T) {
 
 	seed := seed.Seed{
 		ChainID: chainID,
-		Apis: seed.Apis{
-			RPC: []seed.RPC{
+		APIs: seed.Apis{
+			RPC: []seed.Provider{
 				{
 					Address:  srv1.URL,
 					Provider: "srv1",
