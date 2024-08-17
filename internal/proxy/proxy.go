@@ -111,7 +111,20 @@ func (p *Proxy) next() *Server {
 	return p.next()
 }
 
-func (p *Proxy) update(providers []seed.Provider) error {
+func (p *Proxy) update(seed seed.Seed) {
+	var err error
+	switch p.kind {
+	case RPC:
+		err = p.doUpdate(seed.APIs.RPC)
+	case Rest:
+		err = p.doUpdate(seed.APIs.Rest)
+	}
+	if err != nil {
+		slog.Error("could not update seed", "err", err)
+	}
+}
+
+func (p *Proxy) doUpdate(providers []seed.Provider) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -153,12 +166,7 @@ func (p *Proxy) Start(ctx context.Context) {
 			for {
 				select {
 				case seed := <-p.ch:
-					switch p.kind {
-					case RPC:
-						p.update(seed.APIs.RPC)
-					case Rest:
-						p.update(seed.APIs.Rest)
-					}
+					p.update(seed)
 				case <-ctx.Done():
 					p.shuttingDown.Store(true)
 					return
