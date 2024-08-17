@@ -34,28 +34,34 @@ func main() {
 		am.HostPolicy = autocert.HostWhitelist(hosts...)
 	}
 
-	proxyHandler := proxy.New(cfg)
+	rpcProxyHandler := proxy.New(proxy.RPC, cfg)
+	restProxyHandler := proxy.New(proxy.Rest, cfg)
 
 	proxyCtx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
-	proxyHandler.Start(proxyCtx)
+	rpcProxyHandler.Start(proxyCtx)
+	restProxyHandler.Start(proxyCtx)
 
 	indexTpl := template.Must(template.New("stats").Parse(string(index)))
 
 	m := http.NewServeMux()
 	m.Handle("/health/ready", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !proxyHandler.Ready() {
+		if !rpcProxyHandler.Ready() || !restProxyHandler.Ready() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 	}))
 	m.Handle("/health/live", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !proxyHandler.Live() {
+		if !rpcProxyHandler.Live() || !restProxyHandler.Live() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 	}))
-	m.Handle("/rpc", proxyHandler)
+	m.Handle("/rpc", rpcProxyHandler)
+	m.Handle("/rest", restProxyHandler)
 	m.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := indexTpl.Execute(w, proxyHandler.Stats()); err != nil {
+		if err := indexTpl.Execute(w, map[string][]proxy.ServerStat{
+			"RPC":  rpcProxyHandler.Stats(),
+			"Rest": restProxyHandler.Stats(),
+		}); err != nil {
 			slog.Error("could render stats", "err", err)
 		}
 	}))
