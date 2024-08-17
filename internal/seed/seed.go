@@ -10,19 +10,20 @@ import (
 type Seed struct {
 	Status  string `json:"status"`
 	ChainID string `json:"chain_id"`
-	Apis    Apis   `json:"apis"`
+	APIs    Apis   `json:"apis"`
 }
 
-type RPC struct {
+type Provider struct {
 	Address  string `json:"address"`
 	Provider string `json:"provider"`
 }
 
 type Apis struct {
-	RPC []RPC `json:"rpc"`
+	RPC  []Provider `json:"rpc"`
+	Rest []Provider `json:"rest"`
 }
 
-func Fetch(url string) (Seed, error) {
+func fetch(url string) (Seed, error) {
 	var seed Seed
 	resp, err := http.Get(url)
 	if err != nil {

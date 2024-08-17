@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -52,11 +51,12 @@ func (s *Server) ErrorRate() float64 {
 }
 
 func (s *Server) Healthy() bool {
-	return s.pings.Last() < s.cfg.HealthyThreshold
+	return s.pings.Last() < s.cfg.HealthyThreshold &&
+		s.ErrorRate() < s.cfg.HealthyErrorRateThreshold
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var status int
+	var status int = -1
 	start := time.Now()
 	defer func() {
 		d := time.Since(start)
@@ -64,13 +64,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Info("request done", "name", s.name, "avg", avg, "last", d, "status", status)
 	}()
 
+	path := r.URL.Path
 	proxiedURL := r.URL
+	proxiedURL.Path = s.url.Path + path
 	proxiedURL.Host = s.url.Host
 	proxiedURL.Scheme = s.url.Scheme
-
-	if !strings.HasSuffix(s.url.Path, "/rpc") {
-		proxiedURL.Path = strings.TrimSuffix(proxiedURL.Path, "/rpc")
-	}
 
 	slog.Info("proxying request", "name", s.name, "url", proxiedURL)
 
@@ -87,7 +85,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	resp, err := http.DefaultClient.Do(rr.WithContext(ctx))
-	status = resp.StatusCode
+	if resp != nil {
+		status = resp.StatusCode
+	}
 	if err == nil {
 		defer resp.Body.Close()
 		for k, v := range resp.Header {
@@ -102,10 +102,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.requestCount.Add(1)
-	if resp.StatusCode >= 200 && resp.StatusCode <= 300 {
-		s.successes.Append(resp.StatusCode, s.cfg.HealthyErrorRateBucketTimeout)
+	if status == 0 || (status >= 200 && status <= 300) {
+		s.successes.Append(status, s.cfg.HealthyErrorRateBucketTimeout)
 	} else {
-		s.failures.Append(resp.StatusCode, s.cfg.HealthyErrorRateBucketTimeout)
+		s.failures.Append(status, s.cfg.HealthyErrorRateBucketTimeout)
 	}
 
 	if !s.Healthy() && ctx.Err() == nil && err == nil {

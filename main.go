@@ -14,6 +14,7 @@ import (
 
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/proxy"
+	"github.com/akash-network/rpc-proxy/internal/seed"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -34,28 +35,39 @@ func main() {
 		am.HostPolicy = autocert.HostWhitelist(hosts...)
 	}
 
-	proxyHandler := proxy.New(cfg)
+	rpcListener := make(chan seed.Seed, 1)
+	restListener := make(chan seed.Seed, 1)
 
-	proxyCtx, proxyCtxCancel := context.WithCancel(context.Background())
+	updater := seed.New(cfg, rpcListener, restListener)
+	rpcProxyHandler := proxy.New(proxy.RPC, rpcListener, cfg)
+	restProxyHandler := proxy.New(proxy.Rest, restListener, cfg)
+
+	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
-	proxyHandler.Start(proxyCtx)
+	updater.Start(ctx)
+	rpcProxyHandler.Start(ctx)
+	restProxyHandler.Start(ctx)
 
 	indexTpl := template.Must(template.New("stats").Parse(string(index)))
 
 	m := http.NewServeMux()
 	m.Handle("/health/ready", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !proxyHandler.Ready() {
+		if !rpcProxyHandler.Ready() || !restProxyHandler.Ready() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 	}))
 	m.Handle("/health/live", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !proxyHandler.Live() {
+		if !rpcProxyHandler.Live() || !restProxyHandler.Live() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 	}))
-	m.Handle("/rpc", proxyHandler)
+	m.Handle("/rpc", rpcProxyHandler)
+	m.Handle("/rest", restProxyHandler)
 	m.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := indexTpl.Execute(w, proxyHandler.Stats()); err != nil {
+		if err := indexTpl.Execute(w, map[string][]proxy.ServerStat{
+			"RPC":  rpcProxyHandler.Stats(),
+			"Rest": restProxyHandler.Stats(),
+		}); err != nil {
 			slog.Error("could render stats", "err", err)
 		}
 	}))
@@ -97,9 +109,9 @@ func main() {
 
 	proxyCtxCancel()
 
-	proxyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(proxyCtx); err != nil {
+	if err := srv.Shutdown(ctx); err != nil {
 		slog.Error("could not close server", "err", err)
 		os.Exit(1)
 	}
