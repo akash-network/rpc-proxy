@@ -23,7 +23,7 @@ type Apis struct {
 	Rest []Provider `json:"rest"`
 }
 
-func Fetch(url string) (Seed, error) {
+func fetch(url string) (Seed, error) {
 	var seed Seed
 	resp, err := http.Get(url)
 	if err != nil {

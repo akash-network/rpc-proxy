@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/seed"
@@ -23,9 +22,14 @@ const (
 	Rest ProxyKind = iota
 )
 
-func New(kind ProxyKind, cfg config.Config) *Proxy {
+func New(
+	kind ProxyKind,
+	ch chan seed.Seed,
+	cfg config.Config,
+) *Proxy {
 	return &Proxy{
 		cfg:  cfg,
+		ch:   ch,
 		kind: kind,
 	}
 }
@@ -34,6 +38,7 @@ type Proxy struct {
 	cfg  config.Config
 	kind ProxyKind
 	init sync.Once
+	ch   chan seed.Seed
 
 	round   int
 	mu      sync.Mutex
@@ -106,7 +111,6 @@ func (p *Proxy) next() *Server {
 	return p.next()
 }
 
-// TODO: move this to another thing, share it with multiple proxies
 func (p *Proxy) update(providers []seed.Provider) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -146,40 +150,20 @@ func (p *Proxy) update(providers []seed.Provider) error {
 func (p *Proxy) Start(ctx context.Context) {
 	p.init.Do(func() {
 		go func() {
-			t := time.NewTicker(p.cfg.SeedRefreshInterval)
-			defer t.Stop()
 			for {
 				select {
-				case <-t.C:
-					p.fetchAndUpdate()
+				case seed := <-p.ch:
+					switch p.kind {
+					case RPC:
+						p.update(seed.APIs.RPC)
+					case Rest:
+						p.update(seed.APIs.Rest)
+					}
 				case <-ctx.Done():
 					p.shuttingDown.Store(true)
 					return
 				}
 			}
 		}()
-		p.fetchAndUpdate()
 	})
-}
-
-func (p *Proxy) fetchAndUpdate() {
-	result, err := seed.Fetch(p.cfg.SeedURL)
-	if err != nil {
-		slog.Error("could not get initial seed list", "err", err)
-		return
-	}
-	if result.ChainID != p.cfg.ChainID {
-		slog.Error("chain ID is different than expected", "got", result.ChainID, "expected", p.cfg.ChainID)
-		return
-	}
-	switch p.kind {
-	case RPC:
-		if err := p.update(result.APIs.RPC); err != nil {
-			slog.Error("could not update servers", "err", err)
-		}
-	case Rest:
-		if err := p.update(result.APIs.Rest); err != nil {
-			slog.Error("could not update servers", "err", err)
-		}
-	}
 }
