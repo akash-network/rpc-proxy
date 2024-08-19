@@ -28,10 +28,7 @@ func newServer(name, addr string, cfg config.Config, kind ProxyKind) (*Server, e
 		cfg:              cfg,
 		successes:        ttlslice.New[int](),
 		failures:         ttlslice.New[int](),
-		healthyThreshold: cfg.HealthyThreshold,
-		requestTimeout:   cfg.ProxyRequestTimeout,
 		lastHealthCheck:  time.Now().UTC(),
-		healthInterval:   cfg.CheckHealthInterval,
 		healthy:          atomic.Bool{},
 		kind:             kind,
 	}
@@ -51,9 +48,6 @@ type Server struct {
 	healthy         atomic.Bool
 
 	requestCount     atomic.Int64
-	healthInterval   time.Duration
-	healthyThreshold time.Duration
-	requestTimeout   time.Duration
 	cfg              config.Config
 	successes        *ttlslice.Slice[int]
 	failures         *ttlslice.Slice[int]
@@ -62,7 +56,7 @@ type Server struct {
 func (s *Server) Healthy() bool {
 	now := time.Now().UTC()
 	//Add different config value if wanted
-	if now.Sub(s.lastHealthCheck) >= s.healthInterval {
+	if now.Sub(s.lastHealthCheck) >= s.cfg.CheckHealthInterval {
 		slog.Info("checking health", "name", s.name)
 		err := checkEndpoint(s.url.String(), s.kind)
 		healthy := err == nil
@@ -76,7 +70,7 @@ func (s *Server) Healthy() bool {
 		}
 	}
 
-	return s.pings.Last() < s.healthyThreshold && s.healthy.Load()
+	return s.pings.Last() < s.cfg.HealthyThreshold && s.healthy.Load()
 }
 func (s *Server) ErrorRate() float64 {
 	suss := len(s.successes.List())
