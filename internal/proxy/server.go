@@ -15,7 +15,7 @@ import (
 	"github.com/akash-network/rpc-proxy/internal/ttlslice"
 )
 
-func newServer(name, addr string, healthyThreshold, requestTimeout time.Duration, healthInterval time.Duration, cfg config.Config) (*Server, error) {
+func newServer(name, addr string, cfg config.Config, kind ProxyKind) (*Server, error) {
 	target, err := url.Parse(addr)
 	if err != nil {
 		return nil, fmt.Errorf("could not create new server: %w", err)
@@ -28,14 +28,15 @@ func newServer(name, addr string, healthyThreshold, requestTimeout time.Duration
 		cfg:              cfg,
 		successes:        ttlslice.New[int](),
 		failures:         ttlslice.New[int](),
-		healthyThreshold: healthyThreshold,
-		requestTimeout:   requestTimeout,
+		healthyThreshold: cfg.HealthyThreshold,
+		requestTimeout:   cfg.ProxyRequestTimeout,
 		lastHealthCheck:  time.Now().UTC(),
-		healthInterval:   healthInterval,
+		healthInterval:   cfg.CheckHealthInterval,
 		healthy:          atomic.Bool{},
+		kind:             kind,
 	}
 
-	err = checkSingleRPC(addr)
+	err = checkEndpoint(addr, kind)
 	server.healthy.Store(err == nil)
 
 	return server, nil
@@ -44,6 +45,7 @@ func newServer(name, addr string, healthyThreshold, requestTimeout time.Duration
 type Server struct {
 	name            string
 	url             *url.URL
+	kind            ProxyKind
 	pings           *avg.MovingAverage
 	lastHealthCheck time.Time
 	healthy         atomic.Bool
@@ -59,9 +61,10 @@ type Server struct {
 
 func (s *Server) Healthy() bool {
 	now := time.Now().UTC()
+	//Add different config value if wanted
 	if now.Sub(s.lastHealthCheck) >= s.healthInterval {
 		slog.Info("checking health", "name", s.name)
-		err := checkSingleRPC(s.url.String())
+		err := checkEndpoint(s.url.String(), s.kind)
 		healthy := err == nil
 		s.healthy.Store(healthy)
 		s.lastHealthCheck = now

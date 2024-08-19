@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/seed"
@@ -38,20 +39,29 @@ func New(
 }
 
 type StatusResponse struct {
-    Jsonrpc string `json:"jsonrpc"`
-    Result  struct {
-        NodeInfo struct {
-            ID      string `json:"id"`
-            Network string `json:"network"`
-            Version string `json:"version"`
-        } `json:"node_info"`
-        SyncInfo struct {
-            LatestBlockTime time.Time `json:"latest_block_time"`
-            CatchingUp      bool      `json:"catching_up"`
-        } `json:"sync_info"`
-    } `json:"result"`
+	Jsonrpc string `json:"jsonrpc"`
+	Result  struct {
+		NodeInfo struct {
+			ID      string `json:"id"`
+			Network string `json:"network"`
+			Version string `json:"version"`
+		} `json:"node_info"`
+		SyncInfo struct {
+			LatestBlockTime time.Time `json:"latest_block_time"`
+			CatchingUp      bool      `json:"catching_up"`
+		} `json:"sync_info"`
+	} `json:"result"`
 }
 
+type RestStatusResponse struct {
+	Block struct {
+		Header struct {
+			ChainID string    `json:"chain_id"`
+			Height  string    `json:"height"`
+			Time    time.Time `json:"time"`
+		} `json:"header"`
+	} `json:"block"`
+}
 type Proxy struct {
 	cfg  config.Config
 	kind ProxyKind
@@ -109,41 +119,75 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusInternalServerError)
 }
 
-func checkSingleRPC(url string) error {
-    req, err := http.NewRequest("GET", url+"/status", nil)
-    if err != nil {
-        return fmt.Errorf("error creating request: %v", err)
-    }
-    client := &http.Client{Timeout: 2 * time.Second}
-    resp, err := client.Do(req)
-    if err != nil {
-        return fmt.Errorf("error making request: %v", err)
-    }
-    defer resp.Body.Close()
+func checkEndpoint(url string, kind ProxyKind) error {
+	switch kind {
+	case RPC:
+		return checkRPC(url)
+	case Rest:
+		return checkREST(url)
+	default:
+		return fmt.Errorf("unsupported proxy kind: %v", kind)
+	}
+}
 
-    if resp.StatusCode != http.StatusOK {
-        return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-    }
+func performGetRequest(url string, timeout time.Duration) ([]byte, error) {
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("error making request: %v", err)
+	}
+	defer resp.Body.Close()
 
-    body, err := io.ReadAll(resp.Body)
-    if err != nil {
-        return fmt.Errorf("error reading response body: %v", err)
-    }
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
 
-    var status StatusResponse
-    if err := json.Unmarshal(body, &status); err != nil {
-        return fmt.Errorf("error unmarshaling JSON: %v", err)
-    }
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %v", err)
+	}
 
-    if status.Result.SyncInfo.CatchingUp {
-        return fmt.Errorf("node is still catching up")
-    }
+	return body, nil
+}
 
-    if !status.Result.SyncInfo.LatestBlockTime.After(time.Now().Add(-time.Minute)) {
-        return fmt.Errorf("latest block time is more than 1 minute old")
-    }
+func checkRPC(url string) error {
+	body, err := performGetRequest(url+"/status", 2*time.Second)
+	if err != nil {
+		return err
+	}
 
-    return nil
+	var status StatusResponse
+	if err := json.Unmarshal(body, &status); err != nil {
+		return fmt.Errorf("error unmarshaling JSON: %v", err)
+	}
+
+	if status.Result.SyncInfo.CatchingUp {
+		return fmt.Errorf("node is still catching up")
+	}
+
+	if !status.Result.SyncInfo.LatestBlockTime.After(time.Now().Add(-time.Minute)) {
+		return fmt.Errorf("latest block time is more than 1 minute old")
+	}
+
+	return nil
+}
+
+func checkREST(url string) error {
+	body, err := performGetRequest(url+"/blocks/latest", 2*time.Second)
+	if err != nil {
+		return err
+	}
+
+	var status RestStatusResponse
+	if err := json.Unmarshal(body, &status); err != nil {
+		return fmt.Errorf("error unmarshaling JSON: %v", err)
+	}
+
+	if !status.Block.Header.Time.After(time.Now().Add(-time.Minute)) {
+		return fmt.Errorf("latest block time is more than 1 minute old")
+	}
+
+	return nil
 }
 
 func (p *Proxy) next() *Server {
@@ -190,9 +234,8 @@ func (p *Proxy) doUpdate(providers []seed.Provider) error {
 			srv, err := newServer(
 				provider.Provider,
 				provider.Address,
-				p.cfg.HealthyThreshold,
-				p.cfg.ProxyRequestTimeout,
-				p.cfg.CheckHealthInterval,
+				p.cfg,
+				p.kind,
 			)
 			if err != nil {
 				return err
