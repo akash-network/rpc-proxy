@@ -165,7 +165,7 @@ func checkRPC(url string) error {
 		return fmt.Errorf("node is still catching up")
 	}
 
-	if !status.Result.SyncInfo.LatestBlockTime.After(time.Now().Add(-time.Minute)) {
+	if !status.Result.SyncInfo.LatestBlockTime.After(time.Now().UTC().Add(-time.Minute)) {
 		return fmt.Errorf("latest block time is more than 1 minute old")
 	}
 
@@ -183,7 +183,7 @@ func checkREST(url string) error {
 		return fmt.Errorf("error unmarshaling JSON: %v", err)
 	}
 
-	if !status.Block.Header.Time.After(time.Now().Add(-time.Minute)) {
+	if !status.Block.Header.Time.After(time.Now().UTC().Add(-time.Minute)) {
 		return fmt.Errorf("latest block time is more than 1 minute old")
 	}
 
