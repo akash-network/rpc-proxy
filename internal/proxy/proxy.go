@@ -13,15 +13,27 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
-func New(cfg config.Config) *Proxy {
+type ProxyKind uint8
+
+const (
+	RPC  ProxyKind = iota
+	Rest ProxyKind = iota
+)
+
+func New(
+	kind ProxyKind,
+	ch chan seed.Seed,
+	cfg config.Config,
+) *Proxy {
 	return &Proxy{
-		cfg: cfg,
+		cfg:  cfg,
+		ch:   ch,
+		kind: kind,
 	}
 }
 
@@ -42,7 +54,9 @@ type StatusResponse struct {
 
 type Proxy struct {
 	cfg  config.Config
+	kind ProxyKind
 	init sync.Once
+	ch   chan seed.Seed
 
 	round   int
 	mu      sync.Mutex
@@ -66,6 +80,7 @@ func (p *Proxy) Stats() []ServerStat {
 			Degraded:    !s.Healthy(),
 			Initialized: reqCount > 0,
 			Requests:    reqCount,
+			ErrorRate:   s.ErrorRate(),
 		})
 	}
 	sort.Sort(serverStats(result))
@@ -79,11 +94,16 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rpc")
+	switch p.kind {
+	case RPC:
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rpc")
+	case Rest:
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rest")
+	}
+
 	if srv := p.next(); srv != nil {
 		srv.ServeHTTP(w, r)
 		return
-
 	}
 	slog.Error("no servers available")
 	w.WriteHeader(http.StatusInternalServerError)
@@ -135,7 +155,7 @@ func (p *Proxy) next() *Server {
 	server := p.servers[p.round%len(p.servers)]
 	p.round++
 	p.mu.Unlock()
-	if server.Healthy() {
+	if server.Healthy() && server.ErrorRate() <= p.cfg.HealthyErrorRateThreshold {
 		return server
 	}
 	if rand.Intn(99)+1 < p.cfg.UnhealthyServerRecoverChancePct {
@@ -146,17 +166,30 @@ func (p *Proxy) next() *Server {
 	return p.next()
 }
 
-func (p *Proxy) update(rpcs []seed.RPC) error {
+func (p *Proxy) update(seed seed.Seed) {
+	var err error
+	switch p.kind {
+	case RPC:
+		err = p.doUpdate(seed.APIs.RPC)
+	case Rest:
+		err = p.doUpdate(seed.APIs.Rest)
+	}
+	if err != nil {
+		slog.Error("could not update seed", "err", err)
+	}
+}
+
+func (p *Proxy) doUpdate(providers []seed.Provider) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	// add new servers
-	for _, rpc := range rpcs {
-		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == rpc.Provider })
+	for _, provider := range providers {
+		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == provider.Provider })
 		if idx == -1 {
 			srv, err := newServer(
-				rpc.Provider,
-				rpc.Address,
+				provider.Provider,
+				provider.Address,
 				p.cfg.HealthyThreshold,
 				p.cfg.ProxyRequestTimeout,
 				p.cfg.CheckHealthInterval,
@@ -170,8 +203,8 @@ func (p *Proxy) update(rpcs []seed.RPC) error {
 
 	// remove deleted servers
 	p.servers = slices.DeleteFunc(p.servers, func(srv *Server) bool {
-		for _, rpc := range rpcs {
-			if rpc.Provider == srv.name && srv.healthy.Load() {
+		for _, provider := range providers {
+			if provider.Provider == srv.name && srv.healthy.Load() {
 				return false
 			}
 		}
@@ -187,33 +220,15 @@ func (p *Proxy) update(rpcs []seed.RPC) error {
 func (p *Proxy) Start(ctx context.Context) {
 	p.init.Do(func() {
 		go func() {
-			t := time.NewTicker(p.cfg.SeedRefreshInterval)
-			defer t.Stop()
 			for {
 				select {
-				case <-t.C:
-					p.fetchAndUpdate()
+				case seed := <-p.ch:
+					p.update(seed)
 				case <-ctx.Done():
 					p.shuttingDown.Store(true)
 					return
 				}
 			}
 		}()
-		p.fetchAndUpdate()
 	})
-}
-
-func (p *Proxy) fetchAndUpdate() {
-	result, err := seed.Fetch(p.cfg.SeedURL)
-	if err != nil {
-		slog.Error("could not get initial seed list", "err", err)
-		return
-	}
-	if result.ChainID != p.cfg.ChainID {
-		slog.Error("chain ID is different than expected", "got", result.ChainID, "expected", p.cfg.ChainID)
-		return
-	}
-	if err := p.update(result.Apis.RPC); err != nil {
-		slog.Error("could not update servers", "err", err)
-	}
 }

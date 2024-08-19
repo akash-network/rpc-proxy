@@ -10,31 +10,35 @@
     <table>
       <thead>
         <tr>
-          <th>Name</th>
-          <th>URL</th>
-          <th>Average response time</th>
+          <th>Server</th>
           <th>Request Count</th>
+          <th>Avg response time</th>
+          <th>Error Rate</th>
           <th>Status</th>
+          <th>Kind</th>
         </tr>
       </thead>
+      <!-- prettier-ignore -->
       <tbody>
-        {{ range .}}
-        <tr>
-          <th>{{.Name}}</th>
-          <th><a href="{{.URL}}">{{.URL}}</a></th>
-          <th>{{.Avg}}</th>
-          <th>{{.Requests}}</th>
-          <th>
-            <!-- prettier-ignore -->
-            {{ if not .Initialized}}
-            initializing
-            {{ else if .Degraded }}
-            degraded
-            {{else}}
-            OK
-            {{end}}
-          </th>
-        </tr>
+        {{ range $key, $value := . }}
+          {{ range $value }}
+            <tr>
+              <th><a href="{{ .URL }}">{{ .Name }}</a></th>
+              <th>{{ .Requests }}</th>
+              <th>{{ .Avg }}</th>
+              <th>{{ .ErrorRate }}%</th>
+              <th>
+                {{ if not .Initialized }}
+                initializing
+                {{ else if .Degraded }}
+                degraded
+                {{ else }}
+                OK
+                {{ end }}
+              </th>
+              <th>{{ $key }}</th>
+            </tr>
+          {{ end }}
         {{ end }}
       </tbody>
     </table>

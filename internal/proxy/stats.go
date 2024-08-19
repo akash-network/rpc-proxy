@@ -9,6 +9,7 @@ type ServerStat struct {
 	Degraded    bool
 	Initialized bool
 	Requests    int64
+	ErrorRate   float64
 }
 
 type serverStats []ServerStat
@@ -28,6 +29,12 @@ func (st serverStats) Less(i, j int) bool {
 		return false
 	}
 	if sj.Degraded && !si.Degraded {
+		return true
+	}
+	if si.ErrorRate > sj.ErrorRate {
+		return false
+	}
+	if sj.ErrorRate > si.ErrorRate {
 		return true
 	}
 	return si.Avg < sj.Avg
