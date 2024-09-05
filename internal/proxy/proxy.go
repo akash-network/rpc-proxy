@@ -2,6 +2,9 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -10,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/seed"
@@ -32,6 +36,36 @@ func New(
 		ch:   ch,
 		kind: kind,
 	}
+}
+
+type RPCSyncInfo struct {
+	LatestBlockTime time.Time `json:"latest_block_time"`
+	CatchingUp      bool      `json:"catching_up"`
+}
+type RPCNodeInfo struct {
+	ID      string `json:"id"`
+	Network string `json:"network"`
+	Version string `json:"version"`
+}
+
+type RPCStatusResponse struct {
+	Jsonrpc string `json:"jsonrpc"`
+	Result  struct {
+		NodeInfo RPCNodeInfo `json:"node_info"`
+		SyncInfo RPCSyncInfo `json:"sync_info"`
+	} `json:"result"`
+}
+
+type RestBlockHeader struct {
+	ChainID string    `json:"chain_id"`
+	Height  string    `json:"height"`
+	Time    time.Time `json:"time"`
+}
+
+type RestStatusResponse struct {
+	Block struct {
+		Header RestBlockHeader `json:"header"`
+	} `json:"block"`
 }
 
 type Proxy struct {
@@ -59,7 +93,7 @@ func (p *Proxy) Stats() []ServerStat {
 			Name:        s.name,
 			URL:         s.url.String(),
 			Avg:         s.pings.Last(),
-			Degraded:    !s.Healthy(),
+			Degraded:    !s.IsHealthy(),
 			Initialized: reqCount > 0,
 			Requests:    reqCount,
 			ErrorRate:   s.ErrorRate(),
@@ -91,6 +125,77 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusInternalServerError)
 }
 
+func checkEndpoint(url string, kind ProxyKind) error {
+	switch kind {
+	case RPC:
+		return checkRPC(url)
+	case Rest:
+		return checkREST(url)
+	default:
+		return fmt.Errorf("unsupported proxy kind: %v", kind)
+	}
+}
+
+func performGetRequest(url string, timeout time.Duration) ([]byte, error) {
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("error making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %v", err)
+	}
+
+	return body, nil
+}
+
+func checkRPC(url string) error {
+	body, err := performGetRequest(url+"/status", 2*time.Second)
+	if err != nil {
+		return err
+	}
+
+	var status RPCStatusResponse
+	if err := json.Unmarshal(body, &status); err != nil {
+		return fmt.Errorf("error unmarshaling JSON in RPC check: %v (response body: %s)", err, string(body))
+	}
+
+	if status.Result.SyncInfo.CatchingUp {
+		return fmt.Errorf("node is still catching up")
+	}
+
+	if !status.Result.SyncInfo.LatestBlockTime.After(time.Now().UTC().Add(-time.Minute)) {
+		return fmt.Errorf("latest block time is more than 1 minute old")
+	}
+
+	return nil
+}
+
+func checkREST(url string) error {
+	body, err := performGetRequest(url+"/blocks/latest", 2*time.Second)
+	if err != nil {
+		return err
+	}
+
+	var status RestStatusResponse
+	if err := json.Unmarshal(body, &status); err != nil {
+		return fmt.Errorf("error unmarshaling JSON in REST check: %v (response body: %s)", err, string(body))
+	}
+
+	if !status.Block.Header.Time.After(time.Now().UTC().Add(-time.Minute)) {
+		return fmt.Errorf("latest block time is more than 1 minute old")
+	}
+
+	return nil
+}
+
 func (p *Proxy) next() *Server {
 	p.mu.Lock()
 	if len(p.servers) == 0 {
@@ -100,7 +205,7 @@ func (p *Proxy) next() *Server {
 	server := p.servers[p.round%len(p.servers)]
 	p.round++
 	p.mu.Unlock()
-	if server.Healthy() && server.ErrorRate() <= p.cfg.HealthyErrorRateThreshold {
+	if server.IsHealthy() && server.ErrorRate() <= p.cfg.HealthyErrorRateThreshold {
 		return server
 	}
 	if rand.Intn(99)+1 < p.cfg.UnhealthyServerRecoverChancePct {
@@ -136,6 +241,7 @@ func (p *Proxy) doUpdate(providers []seed.Provider) error {
 				provider.Provider,
 				provider.Address,
 				p.cfg,
+				p.kind,
 			)
 			if err != nil {
 				return err
@@ -147,7 +253,7 @@ func (p *Proxy) doUpdate(providers []seed.Provider) error {
 	// remove deleted servers
 	p.servers = slices.DeleteFunc(p.servers, func(srv *Server) bool {
 		for _, provider := range providers {
-			if provider.Provider == srv.name {
+			if provider.Provider == srv.name && srv.healthy.Load() {
 				return false
 			}
 		}

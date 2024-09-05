@@ -35,6 +35,9 @@ type Config struct {
 	// How slow on average a node needs to be to be marked as unhealthy.
 	HealthyThreshold time.Duration `env:"HEALTHY_THRESHOLD" envDefault:"10s"`
 
+	// Check Health on endpoints.
+	CheckHealthInterval time.Duration `env:"HEALTH_INTERVAL" envDefault:"5m"`
+	
 	// Percentage of request errors deemed acceptable.
 	HealthyErrorRateThreshold float64 `env:"HEALTHY_ERROR_RATE_THRESHOLD" envDefault:"30"`
 

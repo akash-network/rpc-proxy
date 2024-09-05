@@ -15,31 +15,63 @@ import (
 	"github.com/akash-network/rpc-proxy/internal/ttlslice"
 )
 
-func newServer(name, addr string, cfg config.Config) (*Server, error) {
+func newServer(name, addr string, cfg config.Config, kind ProxyKind) (*Server, error) {
 	target, err := url.Parse(addr)
 	if err != nil {
 		return nil, fmt.Errorf("could not create new server: %w", err)
 	}
-	return &Server{
-		name:      name,
-		url:       target,
-		pings:     avg.Moving(50),
-		cfg:       cfg,
-		successes: ttlslice.New[int](),
-		failures:  ttlslice.New[int](),
-	}, nil
+
+	server := &Server{
+		name:            name,
+		url:             target,
+		pings:           avg.Moving(50),
+		cfg:             cfg,
+		successes:       ttlslice.New[int](),
+		failures:        ttlslice.New[int](),
+		lastHealthCheck: time.Now().UTC(),
+		healthy:         atomic.Bool{},
+		kind:            kind,
+	}
+
+	err = checkEndpoint(addr, kind)
+	server.healthy.Store(err == nil)
+
+	return server, nil
 }
 
 type Server struct {
+	name            string
+	url             *url.URL
+	kind            ProxyKind
+	pings           *avg.MovingAverage
+	lastHealthCheck time.Time
+	healthy         atomic.Bool
+
+	requestCount atomic.Int64
 	cfg          config.Config
-	name         string
-	url          *url.URL
-	pings        *avg.MovingAverage
 	successes    *ttlslice.Slice[int]
 	failures     *ttlslice.Slice[int]
-	requestCount atomic.Int64
 }
 
+func (s *Server) IsHealthy() bool {
+	now := time.Now().UTC()
+	//Add different config value if wanted
+	if now.Sub(s.lastHealthCheck) >= s.cfg.CheckHealthInterval {
+		slog.Info("checking health", "name", s.name)
+		err := checkEndpoint(s.url.String(), s.kind)
+		healthy := err == nil
+		s.healthy.Store(healthy)
+		s.lastHealthCheck = now
+
+		if healthy {
+			slog.Info("server is healthy", "name", s.name)
+		} else {
+			slog.Error("server is unhealthy", "name", s.name, "err", err)
+		}
+	}
+
+	return s.pings.Last() < s.cfg.HealthyThreshold && s.healthy.Load()
+}
 func (s *Server) ErrorRate() float64 {
 	suss := len(s.successes.List())
 	fail := len(s.failures.List())
@@ -49,12 +81,6 @@ func (s *Server) ErrorRate() float64 {
 	}
 	return (float64(fail) * 100) / float64(total)
 }
-
-func (s *Server) Healthy() bool {
-	return s.pings.Last() < s.cfg.HealthyThreshold &&
-		s.ErrorRate() < s.cfg.HealthyErrorRateThreshold
-}
-
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var status int = -1
 	start := time.Now()
@@ -108,7 +134,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.failures.Append(status, s.cfg.HealthyErrorRateBucketTimeout)
 	}
 
-	if !s.Healthy() && ctx.Err() == nil && err == nil {
+	if !s.IsHealthy() && ctx.Err() == nil && err == nil {
 		// if it's not healthy, this is a tryout to improve - if the request
 		// wasn't canceled, reset stats
 		slog.Info("resetting statistics", "name", s.name)
