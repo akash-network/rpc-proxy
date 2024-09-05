@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,14 +29,50 @@ func TestProxy(t *testing.T) {
 
 func testProxy(tb testing.TB, kind ProxyKind) {
 	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, "srv1 replied")
+		if r.URL.Path == "/status" || r.URL.Path == "/blocks/latest" {
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"result": map[string]interface{}{
+					"sync_info": map[string]interface{}{
+						"latest_block_time": time.Now().Format(time.RFC3339),
+						"catching_up":       false,
+					},
+				},
+				"block": map[string]interface{}{
+					"header": map[string]interface{}{
+						"time": time.Now().Format(time.RFC3339),
+					},
+				},
+			})
+		} else {
+			_, _ = io.WriteString(w, "srv1 replied")
+		}
 	}))
 	tb.Cleanup(srv1.Close)
+
 	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(time.Millisecond * 500)
-		_, _ = io.WriteString(w, "srv2 replied")
+		if r.URL.Path == "/status" || r.URL.Path == "/blocks/latest" {
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"result": map[string]interface{}{
+					"sync_info": map[string]interface{}{
+						"latest_block_time": time.Now().Format(time.RFC3339),
+						"catching_up":       false,
+					},
+				},
+				"block": map[string]interface{}{
+					"header": map[string]interface{}{
+						"time": time.Now().Format(time.RFC3339),
+					},
+				},
+			})
+		} else {
+			time.Sleep(time.Millisecond * 500)
+			_, _ = io.WriteString(w, "srv2 replied")
+		}
 	}))
 	tb.Cleanup(srv2.Close)
+
 	srv3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
@@ -48,6 +85,7 @@ func testProxy(tb testing.TB, kind ProxyKind) {
 		UnhealthyServerRecoverChancePct: 1,
 		HealthyErrorRateThreshold:       10,
 		HealthyErrorRateBucketTimeout:   time.Second * 10,
+		CheckHealthInterval:             time.Second * 5,
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -77,8 +115,7 @@ func testProxy(tb testing.TB, kind ProxyKind) {
 	}
 
 	require.Eventually(tb, func() bool { return proxy.initialized.Load() }, time.Second, time.Millisecond)
-
-	require.Len(tb, proxy.servers, 3)
+	require.Len(tb, proxy.servers, 2)
 
 	proxySrv := httptest.NewServer(proxy)
 	tb.Cleanup(proxySrv.Close)
@@ -111,7 +148,7 @@ func testProxy(tb testing.TB, kind ProxyKind) {
 	cancel()
 
 	stats := proxy.Stats()
-	require.Len(tb, stats, 3)
+	require.Len(tb, stats, 2)
 
 	var srv1Stats ServerStat
 	var srv2Stats ServerStat
@@ -129,11 +166,14 @@ func testProxy(tb testing.TB, kind ProxyKind) {
 	}
 	require.Zero(tb, srv1Stats.ErrorRate)
 	require.Zero(tb, srv2Stats.ErrorRate)
-	require.Equal(tb, float64(100), srv3Stats.ErrorRate)
 	require.Greater(tb, srv1Stats.Requests, srv2Stats.Requests)
 	require.Greater(tb, srv2Stats.Avg, srv1Stats.Avg)
 	require.False(tb, srv1Stats.Degraded)
 	require.True(tb, srv2Stats.Degraded)
 	require.True(tb, srv1Stats.Initialized)
 	require.True(tb, srv2Stats.Initialized)
+	require.False(tb, srv3Stats.Initialized)
+
+	require.Len(tb, proxy.servers, 2)
+	require.Equal(tb, int64(0), srv3Stats.Requests)
 }

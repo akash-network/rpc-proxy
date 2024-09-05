@@ -38,30 +38,36 @@ func New(
 	}
 }
 
-type StatusResponse struct {
+type RPCSyncInfo struct {
+	LatestBlockTime time.Time `json:"latest_block_time"`
+	CatchingUp      bool      `json:"catching_up"`
+}
+type RPCNodeInfo struct {
+	ID      string `json:"id"`
+	Network string `json:"network"`
+	Version string `json:"version"`
+}
+
+type RPCStatusResponse struct {
 	Jsonrpc string `json:"jsonrpc"`
 	Result  struct {
-		NodeInfo struct {
-			ID      string `json:"id"`
-			Network string `json:"network"`
-			Version string `json:"version"`
-		} `json:"node_info"`
-		SyncInfo struct {
-			LatestBlockTime time.Time `json:"latest_block_time"`
-			CatchingUp      bool      `json:"catching_up"`
-		} `json:"sync_info"`
+		NodeInfo RPCNodeInfo `json:"node_info"`
+		SyncInfo RPCSyncInfo `json:"sync_info"`
 	} `json:"result"`
+}
+
+type RestBlockHeader struct {
+	ChainID string    `json:"chain_id"`
+	Height  string    `json:"height"`
+	Time    time.Time `json:"time"`
 }
 
 type RestStatusResponse struct {
 	Block struct {
-		Header struct {
-			ChainID string    `json:"chain_id"`
-			Height  string    `json:"height"`
-			Time    time.Time `json:"time"`
-		} `json:"header"`
+		Header RestBlockHeader `json:"header"`
 	} `json:"block"`
 }
+
 type Proxy struct {
 	cfg  config.Config
 	kind ProxyKind
@@ -87,7 +93,7 @@ func (p *Proxy) Stats() []ServerStat {
 			Name:        s.name,
 			URL:         s.url.String(),
 			Avg:         s.pings.Last(),
-			Degraded:    !s.Healthy(),
+			Degraded:    !s.IsHealthy(),
 			Initialized: reqCount > 0,
 			Requests:    reqCount,
 			ErrorRate:   s.ErrorRate(),
@@ -156,9 +162,9 @@ func checkRPC(url string) error {
 		return err
 	}
 
-	var status StatusResponse
+	var status RPCStatusResponse
 	if err := json.Unmarshal(body, &status); err != nil {
-		return fmt.Errorf("error unmarshaling JSON: %v", err)
+		return fmt.Errorf("error unmarshaling JSON in RPC check: %v (response body: %s)", err, string(body))
 	}
 
 	if status.Result.SyncInfo.CatchingUp {
@@ -180,7 +186,7 @@ func checkREST(url string) error {
 
 	var status RestStatusResponse
 	if err := json.Unmarshal(body, &status); err != nil {
-		return fmt.Errorf("error unmarshaling JSON: %v", err)
+		return fmt.Errorf("error unmarshaling JSON in REST check: %v (response body: %s)", err, string(body))
 	}
 
 	if !status.Block.Header.Time.After(time.Now().UTC().Add(-time.Minute)) {
@@ -199,7 +205,7 @@ func (p *Proxy) next() *Server {
 	server := p.servers[p.round%len(p.servers)]
 	p.round++
 	p.mu.Unlock()
-	if server.Healthy() && server.ErrorRate() <= p.cfg.HealthyErrorRateThreshold {
+	if server.IsHealthy() && server.ErrorRate() <= p.cfg.HealthyErrorRateThreshold {
 		return server
 	}
 	if rand.Intn(99)+1 < p.cfg.UnhealthyServerRecoverChancePct {

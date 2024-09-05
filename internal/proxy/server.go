@@ -22,15 +22,15 @@ func newServer(name, addr string, cfg config.Config, kind ProxyKind) (*Server, e
 	}
 
 	server := &Server{
-		name:             name,
-		url:              target,
-		pings:            avg.Moving(50),
-		cfg:              cfg,
-		successes:        ttlslice.New[int](),
-		failures:         ttlslice.New[int](),
-		lastHealthCheck:  time.Now().UTC(),
-		healthy:          atomic.Bool{},
-		kind:             kind,
+		name:            name,
+		url:             target,
+		pings:           avg.Moving(50),
+		cfg:             cfg,
+		successes:       ttlslice.New[int](),
+		failures:        ttlslice.New[int](),
+		lastHealthCheck: time.Now().UTC(),
+		healthy:         atomic.Bool{},
+		kind:            kind,
 	}
 
 	err = checkEndpoint(addr, kind)
@@ -47,13 +47,13 @@ type Server struct {
 	lastHealthCheck time.Time
 	healthy         atomic.Bool
 
-	requestCount     atomic.Int64
-	cfg              config.Config
-	successes        *ttlslice.Slice[int]
-	failures         *ttlslice.Slice[int]
+	requestCount atomic.Int64
+	cfg          config.Config
+	successes    *ttlslice.Slice[int]
+	failures     *ttlslice.Slice[int]
 }
 
-func (s *Server) Healthy() bool {
+func (s *Server) IsHealthy() bool {
 	now := time.Now().UTC()
 	//Add different config value if wanted
 	if now.Sub(s.lastHealthCheck) >= s.cfg.CheckHealthInterval {
@@ -134,7 +134,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.failures.Append(status, s.cfg.HealthyErrorRateBucketTimeout)
 	}
 
-	if !s.Healthy() && ctx.Err() == nil && err == nil {
+	if !s.IsHealthy() && ctx.Err() == nil && err == nil {
 		// if it's not healthy, this is a tryout to improve - if the request
 		// wasn't canceled, reset stats
 		slog.Info("resetting statistics", "name", s.name)
