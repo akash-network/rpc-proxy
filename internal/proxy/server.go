@@ -15,29 +15,32 @@ import (
 	"github.com/akash-network/rpc-proxy/internal/ttlslice"
 )
 
-func newServer(name, addr string, cfg config.Config) (*Server, error) {
+func newServer(name, addr string, cfg config.Config, log *slog.Logger) (*Server, error) {
 	target, err := url.Parse(addr)
 	if err != nil {
 		return nil, fmt.Errorf("could not create new server: %w", err)
 	}
+
 	return &Server{
 		name:      name,
-		url:       target,
+		Url:       target,
 		pings:     avg.Moving(50),
 		cfg:       cfg,
 		successes: ttlslice.New[int](),
 		failures:  ttlslice.New[int](),
+		log:       log,
 	}, nil
 }
 
 type Server struct {
 	cfg          config.Config
 	name         string
-	url          *url.URL
+	Url          *url.URL
 	pings        *avg.MovingAverage
 	successes    *ttlslice.Slice[int]
 	failures     *ttlslice.Slice[int]
 	requestCount atomic.Int64
+	log          *slog.Logger
 }
 
 func (s *Server) ErrorRate() float64 {
@@ -61,16 +64,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		d := time.Since(start)
 		avg := s.pings.Next(d)
-		slog.Info("request done", "name", s.name, "avg", avg, "last", d, "status", status)
+		s.log.Info("request done", "name", s.name, "avg", avg, "last", d, "status", status)
 	}()
 
 	path := r.URL.Path
 	proxiedURL := r.URL
-	proxiedURL.Path = s.url.Path + path
-	proxiedURL.Host = s.url.Host
-	proxiedURL.Scheme = s.url.Scheme
+	proxiedURL.Path = s.Url.Path + path
+	proxiedURL.Host = s.Url.Host
+	proxiedURL.Scheme = s.Url.Scheme
 
-	slog.Info("proxying request", "name", s.name, "url", proxiedURL)
+	s.log.Info("proxying request", "name", s.name, "url", proxiedURL, "proto", r.Proto)
 
 	rr := &http.Request{
 		Method:        r.Method,
@@ -97,7 +100,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = io.Copy(w, resp.Body)
 	} else {
-		slog.Error("could not proxy request", "err", err)
+		s.log.Error("could not proxy request", "err", err)
 		http.Error(w, "could not proxy request", http.StatusInternalServerError)
 	}
 
@@ -111,7 +114,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !s.Healthy() && ctx.Err() == nil && err == nil {
 		// if it's not healthy, this is a tryout to improve - if the request
 		// wasn't canceled, reset stats
-		slog.Info("resetting statistics", "name", s.name)
+		s.log.Info("resetting statistics", "name", s.name)
 		s.pings.Reset()
 	}
 }

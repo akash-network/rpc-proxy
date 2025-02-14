@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -48,7 +50,7 @@ func testProxy(tb testing.TB, kind ProxyKind) {
 		UnhealthyServerRecoverChancePct: 1,
 		HealthyErrorRateThreshold:       10,
 		HealthyErrorRateBucketTimeout:   time.Second * 10,
-	})
+	}, slog.New(slog.NewTextHandler(os.Stdout, nil)))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	tb.Cleanup(cancel)

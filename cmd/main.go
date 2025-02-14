@@ -4,6 +4,9 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"fmt"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -23,6 +26,8 @@ var index []byte
 
 func main() {
 	cfg := config.Must()
+	// TODO: Logging configurations through context propagation??
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	am := autocert.Manager{
 		Cache:  autocert.DirCache("."),
@@ -37,22 +42,25 @@ func main() {
 
 	rpcListener := make(chan seed.Seed, 1)
 	restListener := make(chan seed.Seed, 1)
+	grpcListener := make(chan seed.Seed, 1)
 
-	updater := seed.New(cfg, rpcListener, restListener)
-	rpcProxyHandler := proxy.New(proxy.RPC, rpcListener, cfg)
-	restProxyHandler := proxy.New(proxy.Rest, restListener, cfg)
+	updater := seed.New(cfg, log, rpcListener, restListener, grpcListener)
+	rpcProxyHandler := proxy.New(proxy.RPC, rpcListener, cfg, log)
+	restProxyHandler := proxy.New(proxy.Rest, restListener, cfg, log)
+	grpcProxyHandler := proxy.New(proxy.GRPC, grpcListener, cfg, log)
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
 	updater.Start(ctx)
 	rpcProxyHandler.Start(ctx)
 	restProxyHandler.Start(ctx)
+	grpcProxyHandler.Start(ctx)
 
 	indexTpl := template.Must(template.New("stats").Parse(string(index)))
 
 	m := http.NewServeMux()
 	m.Handle("/health/ready", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !rpcProxyHandler.Ready() || !restProxyHandler.Ready() {
+		if !rpcProxyHandler.Ready() || !restProxyHandler.Ready() || !grpcProxyHandler.Ready() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 	}))
@@ -67,8 +75,9 @@ func main() {
 		if err := indexTpl.Execute(w, map[string][]proxy.ServerStat{
 			"RPC":  rpcProxyHandler.Stats(),
 			"Rest": restProxyHandler.Stats(),
+			"GRPC": grpcProxyHandler.Stats(),
 		}); err != nil {
-			slog.Error("could render stats", "err", err)
+			log.Error("could render stats", "err", err)
 		}
 	}))
 
@@ -84,10 +93,11 @@ func main() {
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {
 		srv.TLSConfig = nil
 	}
+
 	go func() {
-		slog.Info("starting server", "addr", cfg.Listen)
+		log.Info("starting server", "addr", cfg.Listen)
+
 		var err error
-		// TODO: find a better way to set this.
 		if cfg.Listen == ":https" {
 			err = srv.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)
 		} else {
@@ -95,10 +105,22 @@ func main() {
 		}
 		if err != nil {
 			if errors.Is(err, http.ErrServerClosed) {
-				slog.Info("server shut down")
+				log.Info("server shut down")
 				return
 			}
-			slog.Error("could not start server", "err", err)
+			log.Error("could not start server", "err", err)
+			os.Exit(1)
+		}
+	}()
+
+	go func() {
+		err := startGRPCServer(log, cfg, grpcProxyHandler, &am)
+		if err != nil {
+			if errors.Is(err, http.ErrServerClosed) {
+				log.Info("server shut down")
+				return
+			}
+			log.Error("could not start grpc server", "err", err)
 			os.Exit(1)
 		}
 	}()
@@ -112,7 +134,26 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		slog.Error("could not close server", "err", err)
+		log.Error("could not close server", "err", err)
 		os.Exit(1)
 	}
+}
+
+func startGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.Proxy, am *autocert.Manager) error {
+	mux := http.NewServeMux()
+
+	// Handle all requests with the proxy
+	mux.Handle("/", p)
+
+	// Start the HTTP/2 server with TLS
+	server := &http.Server{
+		Addr:         cfg.ListenGRPC,
+		Handler:      h2c.NewHandler(mux, &http2.Server{}),
+		ReadTimeout:  time.Second * 10,
+		IdleTimeout:  time.Second * 10,
+		WriteTimeout: time.Second * 10,
+	}
+
+	log.Info(fmt.Sprintf("starting grpc proxy on %s", cfg.ListenGRPC))
+	return server.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)
 }

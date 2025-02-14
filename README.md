@@ -9,6 +9,7 @@ See [config.md](./config.md) for configuration details.
 ## HTTPS Localhost
 
 Easiest way is to use [mkcert](https://github.com/FiloSottile/mkcert).
+Make sure to install the untrusted localhost certificate with `mkcert -install`.
 
 Create the certificate and key, and set them:
 
