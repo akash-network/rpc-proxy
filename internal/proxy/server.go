@@ -15,6 +15,8 @@ import (
 	"github.com/akash-network/rpc-proxy/internal/ttlslice"
 )
 
+// TODO: Replace these stats with prometheus metrics server.
+
 func newServer(name, addr string, cfg config.Config, log *slog.Logger) (*Server, error) {
 	target, err := url.Parse(addr)
 	if err != nil {

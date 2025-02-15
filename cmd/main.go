@@ -45,9 +45,9 @@ func main() {
 	grpcListener := make(chan seed.Seed, 1)
 
 	updater := seed.New(cfg, log, rpcListener, restListener, grpcListener)
-	rpcProxyHandler := proxy.New(proxy.RPC, rpcListener, cfg, log)
-	restProxyHandler := proxy.New(proxy.Rest, restListener, cfg, log)
-	grpcProxyHandler := proxy.New(proxy.GRPC, grpcListener, cfg, log)
+	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg, log)
+	restProxyHandler := proxy.NewRestProxy(restListener, cfg, log)
+	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, cfg, log)
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
@@ -75,7 +75,6 @@ func main() {
 		if err := indexTpl.Execute(w, map[string][]proxy.ServerStat{
 			"RPC":  rpcProxyHandler.Stats(),
 			"Rest": restProxyHandler.Stats(),
-			"GRPC": grpcProxyHandler.Stats(),
 		}); err != nil {
 			log.Error("could render stats", "err", err)
 		}
@@ -114,7 +113,7 @@ func main() {
 	}()
 
 	go func() {
-		err := startGRPCServer(log, cfg, grpcProxyHandler, &am)
+		err := startGRPCServer(log, cfg, grpcProxyHandler)
 		if err != nil {
 			if errors.Is(err, http.ErrServerClosed) {
 				log.Info("server shut down")
@@ -139,7 +138,7 @@ func main() {
 	}
 }
 
-func startGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.Proxy, am *autocert.Manager) error {
+func startGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.GRPCProxy) error {
 	mux := http.NewServeMux()
 
 	// Handle all requests with the proxy
