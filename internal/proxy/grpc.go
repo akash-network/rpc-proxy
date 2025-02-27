@@ -2,11 +2,12 @@ package proxy
 
 import (
 	"context"
-	"github.com/akash-network/rpc-proxy/internal/config"
-	"github.com/akash-network/rpc-proxy/internal/seed"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
+
+	"github.com/akash-network/rpc-proxy/internal/config"
+	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
 type GRPCProxy struct {
@@ -37,10 +38,10 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if srv := p.next(); srv != nil {
 
 		// TODO: Remove as this is used while there is no chain.json with live grpc nodes
-		//srv.Url.Scheme = "https"
-		//srv.Url.Opaque = ""
-		//srv.Url.Host = "grpc17.akashnet.net:10023"
-		//srv.Url.Path = r.URL.Path
+		// srv.Url.Scheme = "https"
+		// srv.Url.Opaque = ""
+		// srv.Url.Host = "grpc17.akashnet.net:10023"
+		// srv.Url.Path = r.URL.Path
 
 		// Create the reverse proxy
 		proxy := httputil.ReverseProxy{
