@@ -37,19 +37,13 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if srv := p.next(); srv != nil {
 
-		// TODO: Remove as this is used while there is no chain.json with live grpc nodes
-		// srv.Url.Scheme = "https"
-		// srv.Url.Opaque = ""
-		// srv.Url.Host = "grpc17.akashnet.net:10023"
-		// srv.Url.Path = r.URL.Path
-
 		// Create the reverse proxy
 		proxy := httputil.ReverseProxy{
 			Director: func(request *http.Request) {
 				request.URL.Scheme = srv.Url.Scheme
 				request.URL.Opaque = srv.Url.Opaque
 				request.URL.Host = srv.Url.Host
-				request.URL.Path = srv.Url.Path
+				request.URL.Path = r.URL.Path
 				request.Header.Set("Content-Type", "application/grpc")
 				request.Header.Set("te", "trailers")
 				request.Body = r.Body

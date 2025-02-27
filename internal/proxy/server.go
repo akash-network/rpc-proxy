@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,12 +16,7 @@ import (
 
 // TODO: Replace these stats with prometheus metrics server.
 
-func newServer(name, addr string, cfg config.Config, log *slog.Logger) (*Server, error) {
-	target, err := url.Parse(addr)
-	if err != nil {
-		return nil, fmt.Errorf("could not create new server: %w", err)
-	}
-
+func newServer(name string, target *url.URL, cfg config.Config, log *slog.Logger) (*Server, error) {
 	return &Server{
 		name:      name,
 		Url:       target,

@@ -2,10 +2,13 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math/rand"
+	"net/url"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -77,11 +80,21 @@ func (p *Proxy) doUpdate(providers []seed.Provider) error {
 
 	// add new servers
 	for _, provider := range providers {
+		// handle schemeless urls
+		if !strings.HasPrefix(provider.Address, "http://") && !strings.HasPrefix(provider.Address, "https://") {
+			provider.Address = fmt.Sprintf("https://%s", provider.Address)
+		}
+
+		target, err := url.Parse(provider.Address)
+		if err != nil {
+			return err
+		}
+
 		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == provider.Provider })
 		if idx == -1 {
 			srv, err := newServer(
 				provider.Provider,
-				provider.Address,
+				target,
 				p.cfg,
 				p.log.With("server_address", provider.Address),
 			)
