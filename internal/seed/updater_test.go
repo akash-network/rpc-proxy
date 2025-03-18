@@ -3,8 +3,10 @@ package seed
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -30,6 +32,12 @@ func TestUpdater(t *testing.T) {
 					Provider: "rest-provider",
 				},
 			},
+			GRPC: []Provider{
+				{
+					Address:  "http://grpc.local",
+					Provider: "grpc-provider",
+				},
+			},
 		},
 	}
 
@@ -46,7 +54,7 @@ func TestUpdater(t *testing.T) {
 		SeedRefreshInterval: time.Millisecond,
 		SeedURL:             srv.URL,
 		ChainID:             chainID,
-	}, rpc, rest)
+	}, slog.New(slog.NewTextHandler(os.Stdin, nil)), rpc, rest)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

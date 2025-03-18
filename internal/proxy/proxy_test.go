@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -15,44 +17,136 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func TestProxy(t *testing.T) {
-	for name, kind := range map[string]ProxyKind{
-		"rpc":  RPC,
-		"rest": Rest,
-	} {
-		t.Run(name, func(t *testing.T) {
-			testProxy(t, kind)
-		})
-	}
-}
+func TestRPCProxy(t *testing.T) {
+	serverList := generateServerList(t)
 
-func testProxy(tb testing.TB, kind ProxyKind) {
-	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, "srv1 replied")
-	}))
-	tb.Cleanup(srv1.Close)
-	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(time.Millisecond * 500)
-		_, _ = io.WriteString(w, "srv2 replied")
-	}))
-	tb.Cleanup(srv2.Close)
-	srv3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusTeapot)
-	}))
-	tb.Cleanup(srv2.Close)
-
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	ch := make(chan seed.Seed, 1)
-	proxy := New(kind, ch, config.Config{
+	proxy := NewRPCProxy(ch, config.Config{
 		HealthyThreshold:                10 * time.Millisecond,
 		ProxyRequestTimeout:             time.Second,
 		UnhealthyServerRecoverChancePct: 1,
 		HealthyErrorRateThreshold:       10,
 		HealthyErrorRateBucketTimeout:   time.Second * 10,
-	})
+	}, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
+	proxy.Start(ctx)
+
+	sendSeed(ch, serverList)
+
+	require.Eventually(t, func() bool { return proxy.initialized.Load() }, time.Second, time.Millisecond)
+
+	require.Len(t, proxy.servers, 3)
+
+	proxySrv := httptest.NewServer(proxy)
+	t.Cleanup(proxySrv.Close)
+
+	generateProxyTraffic(t, proxySrv)
+
+	// stop the proxy
+	cancel()
+
+	stats := proxy.Stats()
+	require.Len(t, stats, 3)
+
+	var srv1Stats ServerStat
+	var srv2Stats ServerStat
+	var srv3Stats ServerStat
+	for _, st := range stats {
+		if st.Name == "srv1" {
+			srv1Stats = st
+		}
+		if st.Name == "srv2" {
+			srv2Stats = st
+		}
+		if st.Name == "srv3" {
+			srv3Stats = st
+		}
+	}
+	require.Zero(t, srv1Stats.ErrorRate)
+	require.Zero(t, srv2Stats.ErrorRate)
+	require.Equal(t, float64(100), srv3Stats.ErrorRate)
+	require.Greater(t, srv1Stats.Requests, srv2Stats.Requests)
+	require.Greater(t, srv2Stats.Avg, srv1Stats.Avg)
+	require.False(t, srv1Stats.Degraded)
+	require.True(t, srv2Stats.Degraded)
+	require.True(t, srv1Stats.Initialized)
+	require.True(t, srv2Stats.Initialized)
+}
+
+func TestRestProxy(t *testing.T) {
+	serverList := generateServerList(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	tb.Cleanup(cancel)
+	defer cancel()
+	ch := make(chan seed.Seed, 1)
+	proxy := NewRestProxy(ch, config.Config{
+		HealthyThreshold:                10 * time.Millisecond,
+		ProxyRequestTimeout:             time.Second,
+		UnhealthyServerRecoverChancePct: 1,
+		HealthyErrorRateThreshold:       10,
+		HealthyErrorRateBucketTimeout:   time.Second * 10,
+	}, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
 	proxy.Start(ctx)
+
+	sendSeed(ch, serverList)
+
+	require.Eventually(t, func() bool { return proxy.initialized.Load() }, time.Second, time.Millisecond)
+
+	require.Len(t, proxy.servers, 3)
+
+	proxySrv := httptest.NewServer(proxy)
+	t.Cleanup(proxySrv.Close)
+
+	generateProxyTraffic(t, proxySrv)
+
+	// stop the proxy
+	cancel()
+
+	stats := proxy.Stats()
+	require.Len(t, stats, 3)
+
+	var srv1Stats ServerStat
+	var srv2Stats ServerStat
+	var srv3Stats ServerStat
+	for _, st := range stats {
+		if st.Name == "srv1" {
+			srv1Stats = st
+		}
+		if st.Name == "srv2" {
+			srv2Stats = st
+		}
+		if st.Name == "srv3" {
+			srv3Stats = st
+		}
+	}
+	require.Zero(t, srv1Stats.ErrorRate)
+	require.Zero(t, srv2Stats.ErrorRate)
+	require.Equal(t, float64(100), srv3Stats.ErrorRate)
+	require.Greater(t, srv1Stats.Requests, srv2Stats.Requests)
+	require.Greater(t, srv2Stats.Avg, srv1Stats.Avg)
+	require.False(t, srv1Stats.Degraded)
+	require.True(t, srv2Stats.Degraded)
+	require.True(t, srv1Stats.Initialized)
+	require.True(t, srv2Stats.Initialized)
+}
+
+func generateServerList(t *testing.T) []seed.Provider {
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "srv1 replied")
+	}))
+	t.Cleanup(srv1.Close)
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(time.Millisecond * 500)
+		_, _ = io.WriteString(w, "srv2 replied")
+	}))
+	t.Cleanup(srv2.Close)
+	srv3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	t.Cleanup(srv3.Close)
 
 	serverList := []seed.Provider{
 		{
@@ -68,26 +162,14 @@ func testProxy(tb testing.TB, kind ProxyKind) {
 			Provider: "srv3",
 		},
 	}
+	return serverList
+}
 
-	ch <- seed.Seed{
-		APIs: seed.Apis{
-			Rest: serverList,
-			RPC:  serverList,
-		},
-	}
-
-	require.Eventually(tb, func() bool { return proxy.initialized.Load() }, time.Second, time.Millisecond)
-
-	require.Len(tb, proxy.servers, 3)
-
-	proxySrv := httptest.NewServer(proxy)
-	tb.Cleanup(proxySrv.Close)
-
+func generateProxyTraffic(t *testing.T, proxySrv *httptest.Server) {
 	var wg errgroup.Group
 	wg.SetLimit(20)
 	for i := 0; i < 100; i++ {
 		wg.Go(func() error {
-			tb.Log("go")
 			req, err := http.NewRequest(http.MethodGet, proxySrv.URL, nil)
 			if err != nil {
 				return err
@@ -105,35 +187,15 @@ func testProxy(tb testing.TB, kind ProxyKind) {
 			return nil
 		})
 	}
-	require.NoError(tb, wg.Wait())
+	require.NoError(t, wg.Wait())
+}
 
-	// stop the proxy
-	cancel()
-
-	stats := proxy.Stats()
-	require.Len(tb, stats, 3)
-
-	var srv1Stats ServerStat
-	var srv2Stats ServerStat
-	var srv3Stats ServerStat
-	for _, st := range stats {
-		if st.Name == "srv1" {
-			srv1Stats = st
-		}
-		if st.Name == "srv2" {
-			srv2Stats = st
-		}
-		if st.Name == "srv3" {
-			srv3Stats = st
-		}
+func sendSeed(ch chan seed.Seed, serverList []seed.Provider) {
+	ch <- seed.Seed{
+		APIs: seed.Apis{
+			Rest: serverList,
+			RPC:  serverList,
+			GRPC: serverList,
+		},
 	}
-	require.Zero(tb, srv1Stats.ErrorRate)
-	require.Zero(tb, srv2Stats.ErrorRate)
-	require.Equal(tb, float64(100), srv3Stats.ErrorRate)
-	require.Greater(tb, srv1Stats.Requests, srv2Stats.Requests)
-	require.Greater(tb, srv2Stats.Avg, srv1Stats.Avg)
-	require.False(tb, srv1Stats.Degraded)
-	require.True(tb, srv2Stats.Degraded)
-	require.True(tb, srv1Stats.Initialized)
-	require.True(tb, srv2Stats.Initialized)
 }

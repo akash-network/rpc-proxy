@@ -2,3 +2,6 @@
 
 dist/
 akash
+
+vendor
+.idea

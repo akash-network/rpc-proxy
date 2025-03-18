@@ -9,7 +9,10 @@ import (
 //go:generate go run github.com/g4s8/envdoc@latest -output ../../config.md -env-prefix AKASH_PROXY_ -types Config
 type Config struct {
 	// Address to listen to.
-	Listen string `env:"LISTEN" envDefault:":https"`
+	Listen string `env:"LISTEN" envDefault:":25567"`
+
+	// Address to listen to on GRPC proxy.
+	ListenGRPC string `env:"LISTEN_GRPC" envDefault:":9090"`
 
 	// Autocert account email.
 	AutocertEmail string `env:"AUTOCERT_EMAIL"`

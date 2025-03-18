@@ -21,6 +21,7 @@ type Provider struct {
 type Apis struct {
 	RPC  []Provider `json:"rpc"`
 	Rest []Provider `json:"rest"`
+	GRPC []Provider `json:"grpc"`
 }
 
 func fetch(url string) (Seed, error) {

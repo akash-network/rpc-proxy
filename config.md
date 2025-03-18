@@ -2,7 +2,8 @@
 
 ## Config
 
- - `AKASH_PROXY_LISTEN` (default: `:https`) - Address to listen to.
+ - `AKASH_PROXY_LISTEN` (default: `:25567`) - Address to listen to.
+ - `AKASH_PROXY_LISTEN_GRPC` (default: `:9090`) - Address to listen to on GRPC proxy.
  - `AKASH_PROXY_AUTOCERT_EMAIL` - Autocert account email.
  - `AKASH_PROXY_AUTOCERT_HOSTS` (comma-separated) - Autocert domains.
  - `AKASH_PROXY_TLS_CERT` - TLS certificate to use. If empty, will try to use autocert.

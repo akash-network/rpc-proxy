@@ -2,9 +2,10 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math/rand"
-	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strings"
@@ -15,28 +16,9 @@ import (
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
-type ProxyKind uint8
-
-const (
-	RPC  ProxyKind = iota
-	Rest ProxyKind = iota
-)
-
-func New(
-	kind ProxyKind,
-	ch chan seed.Seed,
-	cfg config.Config,
-) *Proxy {
-	return &Proxy{
-		cfg:  cfg,
-		ch:   ch,
-		kind: kind,
-	}
-}
-
 type Proxy struct {
 	cfg  config.Config
-	kind ProxyKind
+	log  *slog.Logger
 	init sync.Once
 	ch   chan seed.Seed
 
@@ -48,6 +30,8 @@ type Proxy struct {
 	shuttingDown atomic.Bool
 }
 
+type Updater func(s seed.Seed)
+
 func (p *Proxy) Ready() bool { return p.initialized.Load() }
 func (p *Proxy) Live() bool  { return !p.shuttingDown.Load() && p.initialized.Load() }
 
@@ -57,7 +41,7 @@ func (p *Proxy) Stats() []ServerStat {
 		reqCount := s.requestCount.Load()
 		result = append(result, ServerStat{
 			Name:        s.name,
-			URL:         s.url.String(),
+			URL:         s.Url.String(),
 			Avg:         s.pings.Last(),
 			Degraded:    !s.Healthy(),
 			Initialized: reqCount > 0,
@@ -69,28 +53,6 @@ func (p *Proxy) Stats() []ServerStat {
 	return result
 }
 
-func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if p.shuttingDown.Load() {
-		slog.Error("proxy is shutting down")
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	switch p.kind {
-	case RPC:
-		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rpc")
-	case Rest:
-		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rest")
-	}
-
-	if srv := p.next(); srv != nil {
-		srv.ServeHTTP(w, r)
-		return
-	}
-	slog.Error("no servers available")
-	w.WriteHeader(http.StatusInternalServerError)
-}
-
 func (p *Proxy) next() *Server {
 	p.mu.Lock()
 	if len(p.servers) == 0 {
@@ -98,30 +60,18 @@ func (p *Proxy) next() *Server {
 		return nil
 	}
 	server := p.servers[p.round%len(p.servers)]
+
 	p.round++
 	p.mu.Unlock()
 	if server.Healthy() && server.ErrorRate() <= p.cfg.HealthyErrorRateThreshold {
 		return server
 	}
 	if rand.Intn(99)+1 < p.cfg.UnhealthyServerRecoverChancePct {
-		slog.Warn("giving slow server a chance", "name", server.name, "avg", server.pings.Last())
+		p.log.Warn("giving slow server a chance", "name", server.name, "avg", server.pings.Last())
 		return server
 	}
-	slog.Warn("server is too slow, trying next", "name", server.name, "avg", server.pings.Last())
+	p.log.Warn("server is too slow, trying next", "name", server.name, "avg", server.pings.Last())
 	return p.next()
-}
-
-func (p *Proxy) update(seed seed.Seed) {
-	var err error
-	switch p.kind {
-	case RPC:
-		err = p.doUpdate(seed.APIs.RPC)
-	case Rest:
-		err = p.doUpdate(seed.APIs.Rest)
-	}
-	if err != nil {
-		slog.Error("could not update seed", "err", err)
-	}
 }
 
 func (p *Proxy) doUpdate(providers []seed.Provider) error {
@@ -130,16 +80,28 @@ func (p *Proxy) doUpdate(providers []seed.Provider) error {
 
 	// add new servers
 	for _, provider := range providers {
+		// handle schemeless urls
+		if !strings.HasPrefix(provider.Address, "http://") && !strings.HasPrefix(provider.Address, "https://") {
+			provider.Address = fmt.Sprintf("https://%s", provider.Address)
+		}
+
+		target, err := url.Parse(provider.Address)
+		if err != nil {
+			return err
+		}
+
 		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == provider.Provider })
 		if idx == -1 {
 			srv, err := newServer(
 				provider.Provider,
-				provider.Address,
+				target,
 				p.cfg,
+				p.log.With("server_address", provider.Address),
 			)
 			if err != nil {
 				return err
 			}
+
 			p.servers = append(p.servers, srv)
 		}
 	}
@@ -151,22 +113,22 @@ func (p *Proxy) doUpdate(providers []seed.Provider) error {
 				return false
 			}
 		}
-		slog.Info("server was removed from pool", "name", srv.name)
+		p.log.Info("server was removed from pool", "name", srv.name)
 		return true
 	})
 
-	slog.Info("updated server list", "total", len(p.servers))
+	p.log.Info("updated server list", "total", len(p.servers))
 	p.initialized.Store(true)
 	return nil
 }
 
-func (p *Proxy) Start(ctx context.Context) {
+func (p *Proxy) Start(ctx context.Context, update Updater) {
 	p.init.Do(func() {
 		go func() {
 			for {
 				select {
 				case seed := <-p.ch:
-					p.update(seed)
+					update(seed)
 				case <-ctx.Done():
 					p.shuttingDown.Store(true)
 					return
