@@ -152,14 +152,17 @@ func generateServerList(t *testing.T) []seed.Provider {
 		{
 			Address:  srv1.URL,
 			Provider: "srv1",
+			Status:   seed.Status{CatchingUp: false, Reachable: true},
 		},
 		{
 			Address:  srv2.URL,
 			Provider: "srv2",
+			Status:   seed.Status{CatchingUp: false, Reachable: true},
 		},
 		{
 			Address:  srv3.URL,
 			Provider: "srv3",
+			Status:   seed.Status{CatchingUp: false, Reachable: true},
 		},
 	}
 	return serverList

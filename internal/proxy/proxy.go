@@ -90,7 +90,7 @@ func (p *Proxy) doUpdate(providers []seed.Provider) error {
 			return err
 		}
 
-		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == provider.Provider })
+		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == provider.Provider && provider.Status.CatchingUp })
 		if idx == -1 {
 			srv, err := newServer(
 				provider.Provider,
@@ -110,8 +110,17 @@ func (p *Proxy) doUpdate(providers []seed.Provider) error {
 	p.servers = slices.DeleteFunc(p.servers, func(srv *Server) bool {
 		for _, provider := range providers {
 			if provider.Provider == srv.name {
+
+				if provider.Status.CatchingUp || !provider.Status.Reachable { // provider matches but is unhealthy.
+					p.log.Info("unhealthy server removed from pool",
+						"name", srv.name,
+						"catching_up", provider.Status.CatchingUp,
+						"reachable", provider.Status.Reachable)
+					return true
+				}
 				return false
 			}
+
 		}
 		p.log.Info("server was removed from pool", "name", srv.name)
 		return true

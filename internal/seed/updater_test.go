@@ -24,18 +24,21 @@ func TestUpdater(t *testing.T) {
 				{
 					Address:  "http://rpc.local",
 					Provider: "rpc-provider",
+					Status:   Status{CatchingUp: false, Reachable: true},
 				},
 			},
 			Rest: []Provider{
 				{
 					Address:  "http://rest.local",
 					Provider: "rest-provider",
+					Status:   Status{CatchingUp: false, Reachable: true},
 				},
 			},
 			GRPC: []Provider{
 				{
 					Address:  "http://grpc.local",
 					Provider: "grpc-provider",
+					Status:   Status{CatchingUp: false, Reachable: true},
 				},
 			},
 		},

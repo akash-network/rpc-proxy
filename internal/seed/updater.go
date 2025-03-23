@@ -45,7 +45,7 @@ func (u *Updater) Start(ctx context.Context) {
 
 func (u *Updater) fetchAndUpdate() {
 	u.log.Info("fetching seed list")
-	result, err := fetch(u.cfg.SeedURL)
+	result, err := fetch(u.log, u.cfg.SeedURL)
 	if err != nil {
 		u.log.Error("could not get initial seed list", "err", err)
 		return
