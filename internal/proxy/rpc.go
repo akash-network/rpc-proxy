@@ -54,4 +54,5 @@ func (p *RPCProxy) update(seed seed.Seed) {
 	if err != nil {
 		p.log.Error("could not update seed", "err", err)
 	}
+	p.log.Info("updated server list for RPC", "total", len(p.servers))
 }

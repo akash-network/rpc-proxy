@@ -1,14 +1,11 @@
 package seed
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-
-	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 )
 
 type Seed struct {
@@ -56,44 +53,35 @@ func fetch(log *slog.Logger, url string) (Seed, error) {
 	}
 
 	for i, rpcProxy := range seed.APIs.RPC {
-		// Create an HTTP RPC client
-		client, err := rpchttp.New(rpcProxy.Address)
+		status, err := RPCProbe(rpcProxy)
 		if err != nil {
 			log.Error(fmt.Sprintf("failed to create RPC client: %v", err), "name", rpcProxy.Provider)
-			rpcProxy.Status.Reachable = false
+			seed.APIs.RPC[i] = rpcProxy.WithStatus(status)
 			continue
 		}
 
-		// Fetch the status
-		status, err := client.Status(context.Background())
-		if err != nil {
-			log.Error(fmt.Sprintf("failed to create RPC client: %v", err), "name", rpcProxy.Provider)
-			rpcProxy.Status.Reachable = false
-			continue
-		}
-
-		log.Info("added rpc server", "name", rpcProxy.Provider, "catching_up", status.SyncInfo.CatchingUp)
-
-		seed.APIs.GRPC[i] = rpcProxy.WithStatus(Status{
-			CatchingUp: status.SyncInfo.CatchingUp,
-			Reachable:  true,
-		})
+		log.Info("added rpc server", "name", rpcProxy.Provider, "catching_up", status.CatchingUp)
+		seed.APIs.RPC[i] = rpcProxy.WithStatus(status)
 	}
 
 	for i, restProxy := range seed.APIs.Rest {
 		// TODO: add rest node healtchecks
-		seed.APIs.GRPC[i] = restProxy.WithStatus(Status{
+		seed.APIs.Rest[i] = restProxy.WithStatus(Status{
 			CatchingUp: false,
 			Reachable:  true,
 		})
 	}
 
 	for i, grpcProxy := range seed.APIs.GRPC {
-		// TODO: add grpc node healthchecks
-		seed.APIs.GRPC[i] = grpcProxy.WithStatus(Status{
-			CatchingUp: false,
-			Reachable:  true,
-		})
+		status, err := GRPCProbe(grpcProxy)
+		if err != nil {
+			log.Error(fmt.Sprintf("failed to create gRPC client: %v", err), "name", grpcProxy.Provider)
+			seed.APIs.GRPC[i] = grpcProxy.WithStatus(status)
+			continue
+		}
+
+		log.Info("added gRPC server", "name", grpcProxy.Provider, "catching_up", status.CatchingUp)
+		seed.APIs.GRPC[i] = grpcProxy.WithStatus(status)
 	}
 
 	return seed, nil

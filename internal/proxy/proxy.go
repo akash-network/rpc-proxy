@@ -90,7 +90,8 @@ func (p *Proxy) doUpdate(providers []seed.Provider) error {
 			return err
 		}
 
-		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == provider.Provider && provider.Status.CatchingUp })
+		// TODO: check health before creating new server
+		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == provider.Provider })
 		if idx == -1 {
 			srv, err := newServer(
 				provider.Provider,
@@ -126,7 +127,6 @@ func (p *Proxy) doUpdate(providers []seed.Provider) error {
 		return true
 	})
 
-	p.log.Info("updated server list", "total", len(p.servers))
 	p.initialized.Store(true)
 	return nil
 }
