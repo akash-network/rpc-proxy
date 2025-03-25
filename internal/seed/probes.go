@@ -11,7 +11,18 @@ import (
 	"time"
 )
 
-type NodeProbe func(provider Provider) (Status, error)
+type Probe interface {
+	Probe(provider Provider) (Status, error)
+}
+
+// ProbeFunc type is an adapter to allow the use of ordinary functions as probes.
+// If a given function f is a function with the appropriate signature, ProbeFunc(f) is a Probe that calls f.
+type ProbeFunc func(provider Provider) (Status, error)
+
+// Probe implements the Probe interface for ProbeFunc to allow for defining probes as standalone function
+func (f ProbeFunc) Probe(provider Provider) (Status, error) {
+	return f(provider)
+}
 
 func RPCProbe(provider Provider) (Status, error) {
 	client, err := rpchttp.New(provider.Address, "/") // TODO: Test this
@@ -72,4 +83,11 @@ func GRPCProbe(provider Provider) (Status, error) {
 		Reachable:  true,
 	}, nil
 
+}
+
+func RESTProbe(provider Provider) (Status, error) {
+	return Status{
+		Reachable:  true,
+		CatchingUp: false,
+	}, nil
 }

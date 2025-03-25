@@ -1,11 +1,14 @@
 package seed
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
+	"time"
 )
 
 type Seed struct {
@@ -33,7 +36,63 @@ type Apis struct {
 
 var LatestBlock = 0 // TODO: remove, very bad design.
 
-func fetch(log *slog.Logger, url string) (Seed, error) {
+type Seeder struct {
+	cfg       Config
+	listeners []chan<- Seed
+	init      sync.Once
+	log       *slog.Logger
+	rpcProbe  Probe
+	restProbe Probe
+	grpcProbe Probe
+}
+
+func New(cfg Config, log *slog.Logger, listeners ...chan<- Seed) *Seeder {
+	return &Seeder{
+		cfg:       cfg,
+		listeners: listeners,
+		log:       log,
+		rpcProbe:  ProbeFunc(RPCProbe),
+		restProbe: ProbeFunc(RESTProbe),
+		grpcProbe: ProbeFunc(GRPCProbe),
+	}
+}
+
+func (s *Seeder) Start(ctx context.Context) {
+	s.log.Info("starting updater")
+	s.init.Do(func() {
+		go func() {
+			t := time.NewTicker(s.cfg.SeedRefreshInterval)
+			defer t.Stop()
+			for {
+				select {
+				case <-t.C:
+					s.fetchAndUpdate()
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		s.fetchAndUpdate()
+	})
+}
+
+func (s *Seeder) fetchAndUpdate() {
+	s.log.Info("fetching seed list")
+	result, err := s.fetch(s.log, s.cfg.SeedURL)
+	if err != nil {
+		s.log.Error("could not get initial seed list", "err", err)
+		return
+	}
+	if result.ChainID != s.cfg.ChainID {
+		s.log.Error("chain ID is different than expected", "got", result.ChainID, "expected", s.cfg.ChainID)
+		return
+	}
+	for _, ch := range s.listeners {
+		ch <- result
+	}
+}
+
+func (s *Seeder) fetch(log *slog.Logger, url string) (Seed, error) {
 	var seed Seed
 	resp, err := http.Get(url)
 	if err != nil {
@@ -53,7 +112,7 @@ func fetch(log *slog.Logger, url string) (Seed, error) {
 	}
 
 	for i, rpcProxy := range seed.APIs.RPC {
-		status, err := RPCProbe(rpcProxy)
+		status, err := s.rpcProbe.Probe(rpcProxy)
 		if err != nil {
 			log.Error(fmt.Sprintf("failed to create RPC client: %v", err), "name", rpcProxy.Provider)
 			seed.APIs.RPC[i] = rpcProxy.WithStatus(status)
@@ -73,7 +132,7 @@ func fetch(log *slog.Logger, url string) (Seed, error) {
 	}
 
 	for i, grpcProxy := range seed.APIs.GRPC {
-		status, err := GRPCProbe(grpcProxy)
+		status, err := s.grpcProbe.Probe(grpcProxy)
 		if err != nil {
 			log.Error(fmt.Sprintf("failed to create gRPC client: %v", err), "name", grpcProxy.Provider)
 			seed.APIs.GRPC[i] = grpcProxy.WithStatus(status)

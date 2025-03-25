@@ -34,14 +34,19 @@ func main() {
 	restListener := make(chan seed.Seed, 1)
 	grpcListener := make(chan seed.Seed, 1)
 
-	updater := seed.New(cfg, log, rpcListener, restListener, grpcListener)
+	seederCfg := seed.Config{
+		SeedURL:             cfg.SeedURL,
+		SeedRefreshInterval: cfg.SeedRefreshInterval,
+		ChainID:             cfg.ChainID,
+	}
+	seeder := seed.New(seederCfg, log, rpcListener, restListener, grpcListener)
 	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg, log)
 	restProxyHandler := proxy.NewRestProxy(restListener, cfg, log)
 	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, cfg, log)
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
-	updater.Start(ctx)
+	seeder.Start(ctx)
 	rpcProxyHandler.Start(ctx)
 	restProxyHandler.Start(ctx)
 	grpcProxyHandler.Start(ctx)

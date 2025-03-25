@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -52,23 +51,27 @@ func TestUpdater(t *testing.T) {
 
 	rpc := make(chan Seed, 1)
 	rest := make(chan Seed, 1)
+	grpc := make(chan Seed, 1)
 
-	up := New(config.Config{
+	seeder := New(Config{
 		SeedRefreshInterval: time.Millisecond,
 		SeedURL:             srv.URL,
 		ChainID:             chainID,
-	}, slog.New(slog.NewTextHandler(os.Stdin, nil)), rpc, rest)
+	}, slog.New(slog.NewTextHandler(os.Stdin, nil)), rpc, rest, grpc)
+	seeder.rpcProbe = ProbeFunc(MockProbe)
+	seeder.restProbe = ProbeFunc(MockProbe)
+	seeder.grpcProbe = ProbeFunc(MockProbe)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	up.Start(ctx)
+	seeder.Start(ctx)
 
 	go func() {
 		time.Sleep(time.Millisecond * 500)
 		cancel()
 	}()
 
-	var rpcUpdates, restUpdates atomic.Uint32
+	var rpcUpdates, restUpdates, grpcUpdates atomic.Uint32
 
 outer:
 	for {
@@ -79,6 +82,9 @@ outer:
 		case got := <-rest:
 			restUpdates.Add(1)
 			require.Equal(t, seed, got)
+		case got := <-grpc:
+			grpcUpdates.Add(1)
+			require.Equal(t, seed, got)
 		case <-ctx.Done():
 			break outer
 		}
@@ -86,4 +92,12 @@ outer:
 
 	require.NotZero(t, rpcUpdates.Load())
 	require.NotZero(t, restUpdates.Load())
+	require.NotZero(t, grpcUpdates.Load())
+}
+
+func MockProbe(_ Provider) (Status, error) {
+	return Status{
+		Reachable:  true,
+		CatchingUp: false,
+	}, nil
 }
