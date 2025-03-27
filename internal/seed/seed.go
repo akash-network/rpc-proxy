@@ -17,7 +17,7 @@ type Seed struct {
 	APIs    Apis   `json:"apis"`
 }
 
-type Provider struct {
+type Node struct {
 	Address  string `json:"address"`
 	Provider string `json:"provider"`
 	Status   Status
@@ -26,16 +26,23 @@ type Provider struct {
 type Status struct {
 	Reachable  bool
 	CatchingUp bool
+	// IsLatestBlock is true when the status of the node is caught up to the latest block.
+	// This together with the block.BlockManager can be leveraged to confirm that the nodes are up-to-date on the latest block.
+	// Because the seeding process takes time, the latest block on the start of the seeding process can be a different one from
+	// the end of the seeding process so an absolute value of the latest block is not a good measurement of the node.
+	// Instead, the singleton block.BlockManager must be used and set to the latest block height and if there is a
+	// block.ErrBlockTooLow when setting the height, it means the node that we queried after was actually not on the latest block yet
+	// and is removed from the seed temporarily.
+	IsLatestBlock bool
 }
 
 type Apis struct {
-	RPC  []Provider `json:"rpc"`
-	Rest []Provider `json:"rest"`
-	GRPC []Provider `json:"grpc"`
+	RPC  []Node `json:"rpc"`
+	Rest []Node `json:"rest"`
+	GRPC []Node `json:"grpc"`
 }
 
-var LatestBlock = 0 // TODO: remove, very bad design.
-
+// Seeder represents a seeder process responsible for updating Seed listeners on new changes to the node Seed.
 type Seeder struct {
 	cfg       Config
 	listeners []chan<- Seed
@@ -46,6 +53,8 @@ type Seeder struct {
 	grpcProbe Probe
 }
 
+// New creates a Seeder instance.
+// It takes an arbitrary number of listeners that will receive updated Seed structures.
 func New(cfg Config, log *slog.Logger, listeners ...chan<- Seed) *Seeder {
 	return &Seeder{
 		cfg:       cfg,
@@ -57,6 +66,8 @@ func New(cfg Config, log *slog.Logger, listeners ...chan<- Seed) *Seeder {
 	}
 }
 
+// Start executes a single goroutine to fetch and update seed listeners every Config.SeedRefreshInterval.
+// It is only executed once for every Seeder instance.
 func (s *Seeder) Start(ctx context.Context) {
 	s.log.Info("starting updater")
 	s.init.Do(func() {
@@ -119,12 +130,19 @@ func (s *Seeder) fetch(log *slog.Logger, url string) (Seed, error) {
 			continue
 		}
 
-		log.Info("added rpc server", "name", rpcProxy.Provider, "catching_up", status.CatchingUp)
+		log.Info("added RPC server", "name", rpcProxy.Provider, "catching_up", status.CatchingUp, "latest_block", status.IsLatestBlock)
 		seed.APIs.RPC[i] = rpcProxy.WithStatus(status)
 	}
 
 	for i, restProxy := range seed.APIs.Rest {
-		// TODO: add rest node healtchecks
+		status, err := s.restProbe.Probe(restProxy)
+		if err != nil {
+			log.Error(fmt.Sprintf("failed to create REST client: %v", err), "name", restProxy.Provider)
+			seed.APIs.Rest[i] = restProxy.WithStatus(status)
+			continue
+		}
+
+		log.Info("added REST server", "name", restProxy.Provider, "catching_up", status.CatchingUp)
 		seed.APIs.Rest[i] = restProxy.WithStatus(Status{
 			CatchingUp: false,
 			Reachable:  true,
@@ -139,17 +157,21 @@ func (s *Seeder) fetch(log *slog.Logger, url string) (Seed, error) {
 			continue
 		}
 
-		log.Info("added gRPC server", "name", grpcProxy.Provider, "catching_up", status.CatchingUp)
+		log.Info("added gRPC server", "name", grpcProxy.Provider, "catching_up", status.CatchingUp, "latest_block", status.IsLatestBlock)
 		seed.APIs.GRPC[i] = grpcProxy.WithStatus(status)
 	}
 
 	return seed, nil
 }
 
-func (p Provider) WithStatus(status Status) Provider {
-	return Provider{
+func (p Node) WithStatus(status Status) Node {
+	return Node{
 		Provider: p.Provider,
 		Address:  p.Address,
 		Status:   status,
 	}
+}
+
+func (p Node) Healthy() bool {
+	return p.Status.CatchingUp || !p.Status.Reachable || !p.Status.IsLatestBlock
 }

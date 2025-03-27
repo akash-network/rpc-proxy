@@ -3,64 +3,64 @@ package seed
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"github.com/akash-network/rpc-proxy/internal/block"
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"io"
+	"net/http"
 	"time"
 )
 
+// Probe is the interface that wraps the Probe method.
+//
+// Probe probes the given node for health.
+// A healthy node must return a healthy status.
+// Health is subject to the caller's interpretation of the returned Status.
 type Probe interface {
-	Probe(provider Provider) (Status, error)
+	Probe(node Node) (Status, error)
 }
 
 // ProbeFunc type is an adapter to allow the use of ordinary functions as probes.
 // If a given function f is a function with the appropriate signature, ProbeFunc(f) is a Probe that calls f.
-type ProbeFunc func(provider Provider) (Status, error)
+type ProbeFunc func(node Node) (Status, error)
 
 // Probe implements the Probe interface for ProbeFunc to allow for defining probes as standalone function
-func (f ProbeFunc) Probe(provider Provider) (Status, error) {
-	return f(provider)
+func (f ProbeFunc) Probe(node Node) (Status, error) {
+	return f(node)
 }
 
-func RPCProbe(provider Provider) (Status, error) {
-	client, err := rpchttp.New(provider.Address, "/") // TODO: Test this
+func RPCProbe(node Node) (Status, error) {
+	client, err := rpchttp.New(node.Address, "/") // TODO: Test this
 	if err != nil {
-		unreachable := Status{
-			CatchingUp: false,
-			Reachable:  false,
-		}
-		return unreachable, fmt.Errorf("getting RPC client status: %w", err)
+		return Status{}, fmt.Errorf("getting RPC client status: %w", err)
 	}
 
 	status, err := client.Status(context.Background())
 	if err != nil {
-		unreachable := Status{
-			CatchingUp: false,
-			Reachable:  false,
-		}
-		return unreachable, fmt.Errorf("getting RPC client status: %w", err)
+		return Status{}, fmt.Errorf("getting RPC client status: %w", err)
 	}
 
+	errLowBlock := block.GetInstance().SetLatestBlock(status.SyncInfo.LatestBlockHeight) // TODO: should we consider the error? ...
+
 	return Status{
-		CatchingUp: status.SyncInfo.CatchingUp,
-		Reachable:  true,
+		CatchingUp:    status.SyncInfo.CatchingUp,
+		Reachable:     true,
+		IsLatestBlock: errLowBlock == nil,
 	}, nil
 }
 
-func GRPCProbe(provider Provider) (Status, error) {
+func GRPCProbe(node Node) (Status, error) {
 	creds := credentials.NewTLS(&tls.Config{
 		InsecureSkipVerify: false,
 	})
 
-	conn, err := grpc.NewClient(provider.Address, grpc.WithTransportCredentials(creds), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1024*1024*10)))
+	conn, err := grpc.NewClient(node.Address, grpc.WithTransportCredentials(creds), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1024*1024*10)))
 	if err != nil {
-		unreachable := Status{
-			CatchingUp: false,
-			Reachable:  false,
-		}
-		return unreachable, fmt.Errorf("creating gRPC client: %w", err)
+		return Status{}, fmt.Errorf("creating gRPC client: %w", err)
 	}
 	defer conn.Close()
 
@@ -71,23 +71,87 @@ func GRPCProbe(provider Provider) (Status, error) {
 
 	catchingUp, err := serviceClient.GetSyncing(ctx, &cmtservice.GetSyncingRequest{})
 	if err != nil {
-		unreachable := Status{
-			CatchingUp: false,
-			Reachable:  false,
-		}
-		return unreachable, fmt.Errorf("getting gRPC client sync: %w", err)
+		return Status{}, fmt.Errorf("getting gRPC client sync: %w", err)
 	}
 
+	latestBlock, err := serviceClient.GetLatestBlock(ctx, &cmtservice.GetLatestBlockRequest{})
+	if err != nil {
+		return Status{}, fmt.Errorf("getting gRPC client latest block: %w", err)
+	}
+
+	errLowBlock := block.GetInstance().SetLatestBlock(latestBlock.Block.Header.Height)
+
 	return Status{
-		CatchingUp: catchingUp.Syncing,
-		Reachable:  true,
+		CatchingUp:    catchingUp.Syncing,
+		Reachable:     true,
+		IsLatestBlock: errLowBlock == nil,
 	}, nil
 
 }
 
-func RESTProbe(provider Provider) (Status, error) {
+// RESTProbe TODO: needs refactor ASAP.
+func RESTProbe(node Node) (Status, error) {
+	type SyncInfo struct {
+		CatchingUp bool `json:"catching_up"`
+	}
+
+	client := &http.Client{}
+
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/syncing", node.Address), nil)
+	if err != nil {
+		return Status{}, fmt.Errorf("creating REST client request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return Status{}, fmt.Errorf("getting REST client sync: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return Status{}, fmt.Errorf("unexpected status from REST client [%d %s]: %w", resp.StatusCode, resp.Status, err)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return Status{}, fmt.Errorf("reading body from REST client response: %w", err)
+	}
+
+	var syncing SyncInfo
+	if err := json.Unmarshal(body, &syncing); err != nil {
+		return Status{}, fmt.Errorf("unmarshaling body from REST client response: %w", err)
+	}
+
+	latestBlockReq, err := http.NewRequest("GET", fmt.Sprintf("%s/blocks/latest", node.Address), nil)
+	if err != nil {
+		return Status{}, fmt.Errorf("creating REST client request: %w", err)
+	}
+
+	latestBlockResp, err := client.Do(latestBlockReq)
+	if err != nil {
+		return Status{}, fmt.Errorf("getting REST client sync: %w", err)
+	}
+	defer latestBlockResp.Body.Close()
+
+	if latestBlockResp.StatusCode != 200 {
+		return Status{}, fmt.Errorf("unexpected status from REST client [%d %s]: %w", latestBlockResp.StatusCode, latestBlockResp.Status, err)
+	}
+
+	latestBlockBody, err := io.ReadAll(latestBlockResp.Body)
+	if err != nil {
+		return Status{}, fmt.Errorf("reading body from REST client response: %w", err)
+	}
+
+	var latestBlock cmtservice.GetLatestBlockResponse
+	if err := json.Unmarshal(latestBlockBody, &latestBlock); err != nil {
+		return Status{}, fmt.Errorf("unmarshaling body from REST client response: %w", err)
+	}
+
+	errLowBlock := block.GetInstance().SetLatestBlock(latestBlock.Block.Header.Height)
+
 	return Status{
-		Reachable:  true,
-		CatchingUp: false,
+		CatchingUp:    syncing.CatchingUp,
+		Reachable:     true,
+		IsLatestBlock: errLowBlock == nil,
 	}, nil
 }

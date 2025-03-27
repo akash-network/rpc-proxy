@@ -74,7 +74,7 @@ func (p *Proxy) next() *Server {
 	return p.next()
 }
 
-func (p *Proxy) doUpdate(providers []seed.Provider) error {
+func (p *Proxy) doUpdate(providers []seed.Node) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -111,12 +111,12 @@ func (p *Proxy) doUpdate(providers []seed.Provider) error {
 	p.servers = slices.DeleteFunc(p.servers, func(srv *Server) bool {
 		for _, provider := range providers {
 			if provider.Provider == srv.name {
-
-				if provider.Status.CatchingUp || !provider.Status.Reachable { // provider matches but is unhealthy.
+				if provider.Healthy() { // provider matches but is unhealthy.
 					p.log.Info("unhealthy server removed from pool",
 						"name", srv.name,
 						"catching_up", provider.Status.CatchingUp,
-						"reachable", provider.Status.Reachable)
+						"reachable", provider.Status.Reachable,
+						"latest_block", provider.Status.IsLatestBlock)
 					return true
 				}
 				return false

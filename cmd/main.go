@@ -140,9 +140,9 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 	}))
-	m.Handle("/rpc", rpcProxyHandler)
-	m.Handle("/rest", restProxyHandler)
-	m.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	m.Handle("/rpc/", rpcProxyHandler)
+	m.Handle("/rest/", restProxyHandler)
+	m.Handle("/status", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := indexTpl.Execute(w, map[string][]proxy.ServerStat{
 			"RPC":  rpcProxyHandler.Stats(),
 			"Rest": restProxyHandler.Stats(),

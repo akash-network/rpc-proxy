@@ -133,7 +133,7 @@ func TestRestProxy(t *testing.T) {
 	require.True(t, srv2Stats.Initialized)
 }
 
-func generateServerList(t *testing.T) []seed.Provider {
+func generateServerList(t *testing.T) []seed.Node {
 	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "srv1 replied")
 	}))
@@ -148,7 +148,7 @@ func generateServerList(t *testing.T) []seed.Provider {
 	}))
 	t.Cleanup(srv3.Close)
 
-	serverList := []seed.Provider{
+	serverList := []seed.Node{
 		{
 			Address:  srv1.URL,
 			Provider: "srv1",
@@ -193,7 +193,7 @@ func generateProxyTraffic(t *testing.T, proxySrv *httptest.Server) {
 	require.NoError(t, wg.Wait())
 }
 
-func sendSeed(ch chan seed.Seed, serverList []seed.Provider) {
+func sendSeed(ch chan seed.Seed, serverList []seed.Node) {
 	ch <- seed.Seed{
 		APIs: seed.Apis{
 			Rest: serverList,

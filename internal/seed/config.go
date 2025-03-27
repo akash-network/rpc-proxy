@@ -2,6 +2,7 @@ package seed
 
 import "time"
 
+// Config specifies the required configuration to configure a Seeder.
 type Config struct {
 	// SeedURL is the URL to fetch for server updates.
 	SeedURL string

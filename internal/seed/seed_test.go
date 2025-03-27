@@ -19,25 +19,25 @@ func TestUpdater(t *testing.T) {
 	seed := Seed{
 		ChainID: chainID,
 		APIs: Apis{
-			RPC: []Provider{
+			RPC: []Node{
 				{
 					Address:  "http://rpc.local",
 					Provider: "rpc-provider",
-					Status:   Status{CatchingUp: false, Reachable: true},
+					Status:   Status{CatchingUp: false, Reachable: true, IsLatestBlock: true},
 				},
 			},
-			Rest: []Provider{
+			Rest: []Node{
 				{
 					Address:  "http://rest.local",
 					Provider: "rest-provider",
-					Status:   Status{CatchingUp: false, Reachable: true},
+					Status:   Status{CatchingUp: false, Reachable: true, IsLatestBlock: true},
 				},
 			},
-			GRPC: []Provider{
+			GRPC: []Node{
 				{
 					Address:  "http://grpc.local",
 					Provider: "grpc-provider",
-					Status:   Status{CatchingUp: false, Reachable: true},
+					Status:   Status{CatchingUp: false, Reachable: true, IsLatestBlock: true},
 				},
 			},
 		},
@@ -95,9 +95,10 @@ outer:
 	require.NotZero(t, grpcUpdates.Load())
 }
 
-func MockProbe(_ Provider) (Status, error) {
+func MockProbe(_ Node) (Status, error) {
 	return Status{
-		Reachable:  true,
-		CatchingUp: false,
+		Reachable:     true,
+		CatchingUp:    false,
+		IsLatestBlock: true,
 	}, nil
 }
