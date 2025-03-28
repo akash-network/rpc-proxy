@@ -95,7 +95,7 @@ outer:
 	require.NotZero(t, grpcUpdates.Load())
 }
 
-func MockProbe(_ Node) (Status, error) {
+func MockProbe(_ context.Context, _ Node) (Status, error) {
 	return Status{
 		Reachable:     true,
 		CatchingUp:    false,

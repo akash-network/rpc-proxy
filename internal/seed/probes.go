@@ -21,32 +21,32 @@ import (
 // A healthy node must return a healthy status.
 // Health is subject to the caller's interpretation of the returned Status.
 type Probe interface {
-	Probe(node Node) (Status, error)
+	Probe(ctx context.Context, node Node) (Status, error)
 }
 
 // ProbeFunc type is an adapter to allow the use of ordinary functions as probes.
 // If a given function f is a function with the appropriate signature, ProbeFunc(f) is a Probe that calls f.
-type ProbeFunc func(node Node) (Status, error)
+type ProbeFunc func(ctx context.Context, node Node) (Status, error)
 
 // Probe implements the Probe interface for ProbeFunc to allow for defining probes as standalone function
-func (f ProbeFunc) Probe(node Node) (Status, error) {
-	return f(node)
+func (f ProbeFunc) Probe(ctx context.Context, node Node) (Status, error) {
+	return f(ctx, node)
 }
 
 // RPCProbe probes an RPC Node.
 // It queries the Node status through RPC and tries to set the latest block height globally.
-func RPCProbe(node Node) (Status, error) {
-	client, err := rpchttp.New(node.Address, "/") // TODO: Test this
+func RPCProbe(ctx context.Context, node Node) (Status, error) {
+	client, err := rpchttp.New(node.Address, "/")
 	if err != nil {
 		return Status{}, fmt.Errorf("getting RPC client status: %w", err)
 	}
 
-	status, err := client.Status(context.Background())
+	status, err := client.Status(ctx)
 	if err != nil {
 		return Status{}, fmt.Errorf("getting RPC client status: %w", err)
 	}
 
-	errLowBlock := block.GetInstance().SetLatestBlock(status.SyncInfo.LatestBlockHeight) // TODO: should we consider the error? ...
+	errLowBlock := block.GetInstance().SetLatestBlock(status.SyncInfo.LatestBlockHeight)
 
 	return Status{
 		CatchingUp:    status.SyncInfo.CatchingUp,
@@ -58,7 +58,7 @@ func RPCProbe(node Node) (Status, error) {
 // GRPCProbe probes a gRPC Node.
 // It checks if the node is catching up, queries the Node status through gRPC and tries to set the latest block
 // height globally.
-func GRPCProbe(node Node) (Status, error) {
+func GRPCProbe(ctx context.Context, node Node) (Status, error) {
 	creds := credentials.NewTLS(&tls.Config{
 		InsecureSkipVerify: false,
 	})
@@ -71,7 +71,7 @@ func GRPCProbe(node Node) (Status, error) {
 
 	serviceClient := cmtservice.NewServiceClient(conn)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	catchingUp, err := serviceClient.GetSyncing(ctx, &cmtservice.GetSyncingRequest{})
@@ -97,7 +97,7 @@ func GRPCProbe(node Node) (Status, error) {
 // RESTProbe probes a REST Node.
 // It checks if the node is catching up querying the REST endpoint, queries the Node latest block and tries to set the
 // height globally.
-func RESTProbe(node Node) (Status, error) {
+func RESTProbe(ctx context.Context, node Node) (Status, error) {
 	type SyncInfo struct {
 		CatchingUp bool `json:"catching_up"`
 	}

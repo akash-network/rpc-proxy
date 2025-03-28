@@ -80,19 +80,19 @@ func (s *Seeder) Start(ctx context.Context) {
 			for {
 				select {
 				case <-t.C:
-					s.fetchAndUpdate()
+					s.fetchAndUpdate(ctx)
 				case <-ctx.Done():
 					return
 				}
 			}
 		}()
-		s.fetchAndUpdate()
+		s.fetchAndUpdate(ctx)
 	})
 }
 
-func (s *Seeder) fetchAndUpdate() {
+func (s *Seeder) fetchAndUpdate(ctx context.Context) {
 	s.log.Info("fetching seed list")
-	result, err := s.fetch(s.log, s.cfg.SeedURL)
+	result, err := s.fetch(ctx, s.log, s.cfg.SeedURL)
 	if err != nil {
 		s.log.Error("could not get initial seed list", "err", err)
 		return
@@ -106,7 +106,7 @@ func (s *Seeder) fetchAndUpdate() {
 	}
 }
 
-func (s *Seeder) fetch(log *slog.Logger, url string) (Seed, error) {
+func (s *Seeder) fetch(ctx context.Context, log *slog.Logger, url string) (Seed, error) {
 	var seed Seed
 	resp, err := http.Get(url)
 	if err != nil {
@@ -126,7 +126,7 @@ func (s *Seeder) fetch(log *slog.Logger, url string) (Seed, error) {
 	}
 
 	for i, rpcProxy := range seed.APIs.RPC {
-		status, err := s.rpcProbe.Probe(rpcProxy)
+		status, err := s.rpcProbe.Probe(ctx, rpcProxy)
 		if err != nil {
 			log.Error(fmt.Sprintf("failed to create RPC client: %v", err), "name", rpcProxy.Provider)
 			seed.APIs.RPC[i] = rpcProxy.WithStatus(status)
@@ -138,7 +138,7 @@ func (s *Seeder) fetch(log *slog.Logger, url string) (Seed, error) {
 	}
 
 	for i, restProxy := range seed.APIs.Rest {
-		status, err := s.restProbe.Probe(restProxy)
+		status, err := s.restProbe.Probe(ctx, restProxy)
 		if err != nil {
 			log.Error(fmt.Sprintf("failed to create REST client: %v", err), "name", restProxy.Provider)
 			seed.APIs.Rest[i] = restProxy.WithStatus(status)
@@ -150,7 +150,7 @@ func (s *Seeder) fetch(log *slog.Logger, url string) (Seed, error) {
 	}
 
 	for i, grpcProxy := range seed.APIs.GRPC {
-		status, err := s.grpcProbe.Probe(grpcProxy)
+		status, err := s.grpcProbe.Probe(ctx, grpcProxy)
 		if err != nil {
 			log.Error(fmt.Sprintf("failed to create gRPC client: %v", err), "name", grpcProxy.Provider)
 			seed.APIs.GRPC[i] = grpcProxy.WithStatus(status)
