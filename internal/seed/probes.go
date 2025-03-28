@@ -33,6 +33,8 @@ func (f ProbeFunc) Probe(node Node) (Status, error) {
 	return f(node)
 }
 
+// RPCProbe probes an RPC Node.
+// It queries the Node status through RPC and tries to set the latest block height globally.
 func RPCProbe(node Node) (Status, error) {
 	client, err := rpchttp.New(node.Address, "/") // TODO: Test this
 	if err != nil {
@@ -53,6 +55,9 @@ func RPCProbe(node Node) (Status, error) {
 	}, nil
 }
 
+// GRPCProbe probes a gRPC Node.
+// It checks if the node is catching up, queries the Node status through gRPC and tries to set the latest block
+// height globally.
 func GRPCProbe(node Node) (Status, error) {
 	creds := credentials.NewTLS(&tls.Config{
 		InsecureSkipVerify: false,
@@ -89,7 +94,9 @@ func GRPCProbe(node Node) (Status, error) {
 
 }
 
-// RESTProbe TODO: needs refactor ASAP.
+// RESTProbe probes a REST Node.
+// It checks if the node is catching up querying the REST endpoint, queries the Node latest block and tries to set the
+// height globally.
 func RESTProbe(node Node) (Status, error) {
 	type SyncInfo struct {
 		CatchingUp bool `json:"catching_up"`

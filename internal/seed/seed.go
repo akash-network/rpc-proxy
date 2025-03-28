@@ -23,8 +23,11 @@ type Node struct {
 	Status   Status
 }
 
+// Status represents the latest status of a node.
 type Status struct {
-	Reachable  bool
+	// Reachable is whether a node was able to be reached or not.
+	Reachable bool
+	// CatchingUp whether a node is still trying to keep up with the network.
 	CatchingUp bool
 	// IsLatestBlock is true when the status of the node is caught up to the latest block.
 	// This together with the block.BlockManager can be leveraged to confirm that the nodes are up-to-date on the latest block.
@@ -142,11 +145,8 @@ func (s *Seeder) fetch(log *slog.Logger, url string) (Seed, error) {
 			continue
 		}
 
-		log.Info("added REST server", "name", restProxy.Provider, "catching_up", status.CatchingUp)
-		seed.APIs.Rest[i] = restProxy.WithStatus(Status{
-			CatchingUp: false,
-			Reachable:  true,
-		})
+		log.Info("added REST server", "name", restProxy.Provider, "catching_up", status.CatchingUp, "latest_block", status.IsLatestBlock)
+		seed.APIs.Rest[i] = restProxy.WithStatus(status)
 	}
 
 	for i, grpcProxy := range seed.APIs.GRPC {

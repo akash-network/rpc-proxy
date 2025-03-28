@@ -17,7 +17,7 @@ type BlockManager struct {
 var instance *BlockManager
 var once sync.Once
 
-// GetInstance ensures a single instance of BlockManager
+// GetInstance ensures a single instance of BlockManager.
 func GetInstance() *BlockManager {
 	once.Do(func() {
 		instance = &BlockManager{}
