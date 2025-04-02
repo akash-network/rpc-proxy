@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/akash-network/rpc-proxy/internal/block"
@@ -105,7 +106,7 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 	type LatestBlock struct {
 		Block struct {
 			Header struct {
-				Height int64 `json:"header"`
+				Height string `json:"height"`
 			} `json:"header"`
 		} `json:"block"`
 	}
@@ -162,7 +163,12 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 		return Status{}, fmt.Errorf("unmarshaling body from REST client response: %w", err)
 	}
 
-	errLowBlock := block.GetInstance().SetLatestBlock(latestBlock.Block.Header.Height)
+	height, err := strconv.ParseInt(latestBlock.Block.Header.Height, 10, 64)
+	if err != nil {
+		return Status{}, fmt.Errorf("parsing block height: %w", err)
+	}
+
+	errLowBlock := block.GetInstance().SetLatestBlock(height)
 
 	return Status{
 		CatchingUp:    syncing.CatchingUp,
