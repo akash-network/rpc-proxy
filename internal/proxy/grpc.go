@@ -79,4 +79,5 @@ func (p *GRPCProxy) update(seed seed.Seed) {
 	if err != nil {
 		p.log.Error("could not update seed", "err", err)
 	}
+	p.log.Info("updated server list for gRPC", "total", len(p.servers))
 }
