@@ -5,14 +5,15 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"time"
+
 	"github.com/akash-network/rpc-proxy/internal/block"
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"io"
-	"net/http"
-	"time"
 )
 
 // Probe is the interface that wraps the Probe method.
@@ -91,7 +92,6 @@ func GRPCProbe(ctx context.Context, node Node) (Status, error) {
 		Reachable:     true,
 		IsLatestBlock: errLowBlock == nil,
 	}, nil
-
 }
 
 // RESTProbe probes a REST Node.
@@ -100,6 +100,14 @@ func GRPCProbe(ctx context.Context, node Node) (Status, error) {
 func RESTProbe(ctx context.Context, node Node) (Status, error) {
 	type SyncInfo struct {
 		CatchingUp bool `json:"catching_up"`
+	}
+
+	type LatestBlock struct {
+		Block struct {
+			Header struct {
+				Height int64 `json:"header"`
+			} `json:"header"`
+		} `json:"block"`
 	}
 
 	client := &http.Client{}
@@ -149,7 +157,7 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 		return Status{}, fmt.Errorf("reading body from REST client response: %w", err)
 	}
 
-	var latestBlock cmtservice.GetLatestBlockResponse
+	var latestBlock LatestBlock
 	if err := json.Unmarshal(latestBlockBody, &latestBlock); err != nil {
 		return Status{}, fmt.Errorf("unmarshaling body from REST client response: %w", err)
 	}
