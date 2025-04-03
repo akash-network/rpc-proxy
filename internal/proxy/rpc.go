@@ -23,6 +23,7 @@ func NewRPCProxy(
 			cfg: cfg,
 			ch:  ch,
 			log: log,
+			lb:  New(log),
 		},
 	}
 }
@@ -35,7 +36,7 @@ func (p *RPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rpc")
-	if srv := p.next(); srv != nil {
+	if srv := p.lb.Next(p.servers); srv != nil {
 		srv.ServeHTTP(w, r)
 		return
 	}

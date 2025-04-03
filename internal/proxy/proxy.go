@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"net/url"
 	"slices"
 	"sort"
@@ -22,12 +21,11 @@ type Proxy struct {
 	init sync.Once
 	ch   chan seed.Seed
 
-	round   int
-	mu      sync.Mutex
 	servers []*Server
 
 	initialized  atomic.Bool
 	shuttingDown atomic.Bool
+	lb           LoadBalancer
 }
 
 type Updater func(s seed.Seed)
@@ -53,30 +51,7 @@ func (p *Proxy) Stats() []ServerStat {
 	return result
 }
 
-func (p *Proxy) next() *Server {
-	p.mu.Lock()
-	if len(p.servers) == 0 {
-		p.mu.Unlock()
-		return nil
-	}
-	server := p.servers[p.round%len(p.servers)]
-
-	p.round++
-	p.mu.Unlock()
-	if server.Healthy() && server.ErrorRate() <= p.cfg.HealthyErrorRateThreshold {
-		return server
-	}
-	if rand.Intn(99)+1 < p.cfg.UnhealthyServerRecoverChancePct {
-		p.log.Warn("giving slow server a chance", "name", server.name, "avg", server.pings.Last())
-		return server
-	}
-	p.log.Warn("server is too slow, trying next", "name", server.name, "avg", server.pings.Last())
-	return p.next()
-}
-
 func (p *Proxy) doUpdate(providers []seed.Node) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
 
 	// add new servers
 	for _, provider := range providers {
@@ -90,7 +65,6 @@ func (p *Proxy) doUpdate(providers []seed.Node) error {
 			return err
 		}
 
-		// TODO: check health before creating new server
 		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == provider.Provider })
 		if idx == -1 {
 			srv, err := newServer(
@@ -121,13 +95,13 @@ func (p *Proxy) doUpdate(providers []seed.Node) error {
 				}
 				return false
 			}
-
 		}
 		p.log.Info("server was removed from pool", "name", srv.name)
 		return true
 	})
 
 	p.initialized.Store(true)
+
 	return nil
 }
 
