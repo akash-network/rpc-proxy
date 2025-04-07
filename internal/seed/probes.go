@@ -99,11 +99,11 @@ func GRPCProbe(ctx context.Context, node Node) (Status, error) {
 // It checks if the node is catching up querying the REST endpoint, queries the Node latest block and tries to set the
 // height globally.
 func RESTProbe(ctx context.Context, node Node) (Status, error) {
-	type SyncInfo struct {
+	type syncInfoResponse struct {
 		CatchingUp bool `json:"catching_up"`
 	}
 
-	type LatestBlock struct {
+	type latestBlockResponse struct {
 		Block struct {
 			Header struct {
 				Height string `json:"height"`
@@ -133,7 +133,7 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 		return Status{}, fmt.Errorf("reading body from REST client response: %w", err)
 	}
 
-	var syncing SyncInfo
+	var syncing syncInfoResponse
 	if err := json.Unmarshal(body, &syncing); err != nil {
 		return Status{}, fmt.Errorf("unmarshaling body from REST client response: %w", err)
 	}
@@ -158,7 +158,7 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 		return Status{}, fmt.Errorf("reading body from REST client response: %w", err)
 	}
 
-	var latestBlock LatestBlock
+	var latestBlock latestBlockResponse
 	if err := json.Unmarshal(latestBlockBody, &latestBlock); err != nil {
 		return Status{}, fmt.Errorf("unmarshaling body from REST client response: %w", err)
 	}
