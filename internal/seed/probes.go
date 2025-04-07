@@ -95,22 +95,22 @@ func GRPCProbe(ctx context.Context, node Node) (Status, error) {
 	}, nil
 }
 
+type syncInfoResponse struct {
+	CatchingUp bool `json:"catching_up"`
+}
+
+type latestBlockResponse struct {
+	Block struct {
+		Header struct {
+			Height string `json:"height"`
+		} `json:"header"`
+	} `json:"block"`
+}
+
 // RESTProbe probes a REST Node.
 // It checks if the node is catching up querying the REST endpoint, queries the Node latest block and tries to set the
 // height globally.
 func RESTProbe(ctx context.Context, node Node) (Status, error) {
-	type syncInfoResponse struct {
-		CatchingUp bool `json:"catching_up"`
-	}
-
-	type latestBlockResponse struct {
-		Block struct {
-			Header struct {
-				Height string `json:"height"`
-			} `json:"header"`
-		} `json:"block"`
-	}
-
 	client := &http.Client{}
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/syncing", node.Address), nil)
