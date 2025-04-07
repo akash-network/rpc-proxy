@@ -5,14 +5,16 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strconv"
+	"time"
+
 	"github.com/akash-network/rpc-proxy/internal/block"
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"io"
-	"net/http"
-	"time"
 )
 
 // Probe is the interface that wraps the Probe method.
@@ -91,17 +93,24 @@ func GRPCProbe(ctx context.Context, node Node) (Status, error) {
 		Reachable:     true,
 		IsLatestBlock: errLowBlock == nil,
 	}, nil
+}
 
+type syncInfoResponse struct {
+	CatchingUp bool `json:"catching_up"`
+}
+
+type latestBlockResponse struct {
+	Block struct {
+		Header struct {
+			Height string `json:"height"`
+		} `json:"header"`
+	} `json:"block"`
 }
 
 // RESTProbe probes a REST Node.
 // It checks if the node is catching up querying the REST endpoint, queries the Node latest block and tries to set the
 // height globally.
 func RESTProbe(ctx context.Context, node Node) (Status, error) {
-	type SyncInfo struct {
-		CatchingUp bool `json:"catching_up"`
-	}
-
 	client := &http.Client{}
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/syncing", node.Address), nil)
@@ -124,7 +133,7 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 		return Status{}, fmt.Errorf("reading body from REST client response: %w", err)
 	}
 
-	var syncing SyncInfo
+	var syncing syncInfoResponse
 	if err := json.Unmarshal(body, &syncing); err != nil {
 		return Status{}, fmt.Errorf("unmarshaling body from REST client response: %w", err)
 	}
@@ -149,12 +158,17 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 		return Status{}, fmt.Errorf("reading body from REST client response: %w", err)
 	}
 
-	var latestBlock cmtservice.GetLatestBlockResponse
+	var latestBlock latestBlockResponse
 	if err := json.Unmarshal(latestBlockBody, &latestBlock); err != nil {
 		return Status{}, fmt.Errorf("unmarshaling body from REST client response: %w", err)
 	}
 
-	errLowBlock := block.GetInstance().SetLatestBlock(latestBlock.Block.Header.Height)
+	height, err := strconv.ParseInt(latestBlock.Block.Header.Height, 10, 64)
+	if err != nil {
+		return Status{}, fmt.Errorf("parsing block height: %w", err)
+	}
+
+	errLowBlock := block.GetInstance().SetLatestBlock(height)
 
 	return Status{
 		CatchingUp:    syncing.CatchingUp,

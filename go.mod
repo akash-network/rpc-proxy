@@ -10,6 +10,7 @@ require (
 	golang.org/x/crypto v0.32.0
 	golang.org/x/net v0.34.0
 	golang.org/x/sync v0.10.0
+	google.golang.org/grpc v1.70.0
 )
 
 require (
@@ -142,7 +143,6 @@ require (
 	google.golang.org/genproto v0.0.0-20240227224415-6ceb2ff114de // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241202173237-19429a94021a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250122153221-138b5a5a4fd4 // indirect
-	google.golang.org/grpc v1.70.0 // indirect
 	google.golang.org/protobuf v1.36.4 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
