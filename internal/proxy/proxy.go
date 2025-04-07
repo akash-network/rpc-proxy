@@ -72,6 +72,7 @@ func (p *Proxy) doUpdate(providers []seed.Node) error {
 				target,
 				p.cfg,
 				p.log.With("server_address", provider.Address),
+				provider,
 			)
 			if err != nil {
 				return err
@@ -85,7 +86,7 @@ func (p *Proxy) doUpdate(providers []seed.Node) error {
 	p.servers = slices.DeleteFunc(p.servers, func(srv *Server) bool {
 		for _, provider := range providers {
 			if provider.Provider == srv.name {
-				if provider.Healthy() { // provider matches but is unhealthy.
+				if !provider.Healthy() { // provider matches but is unhealthy.
 					p.log.Info("unhealthy server removed from pool",
 						"name", srv.name,
 						"catching_up", provider.Status.CatchingUp,
@@ -101,6 +102,7 @@ func (p *Proxy) doUpdate(providers []seed.Node) error {
 	})
 
 	p.initialized.Store(true)
+	p.lb.Update(p.servers)
 
 	return nil
 }

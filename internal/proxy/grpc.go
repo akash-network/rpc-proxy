@@ -24,7 +24,7 @@ func NewGRPCProxy(
 			cfg: cfg,
 			ch:  ch,
 			log: log,
-			lb:  New(log),
+			lb:  NewRoundRobin(log),
 		},
 	}
 }
@@ -36,7 +36,7 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if srv := p.lb.Next(p.servers); srv != nil {
+	if srv := p.lb.Next(); srv != nil {
 
 		// Create the reverse proxy
 		proxy := httputil.ReverseProxy{

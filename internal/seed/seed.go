@@ -37,6 +37,8 @@ type Status struct {
 	// block.ErrBlockTooLow when setting the height, it means the node that we queried after was actually not on the latest block yet
 	// and is removed from the seed temporarily.
 	IsLatestBlock bool
+	// Latency ...
+	Latency time.Duration
 }
 
 type Apis struct {
@@ -173,5 +175,5 @@ func (p Node) WithStatus(status Status) Node {
 }
 
 func (p Node) Healthy() bool {
-	return p.Status.CatchingUp || !p.Status.Reachable || !p.Status.IsLatestBlock
+	return !p.Status.CatchingUp && p.Status.Reachable && p.Status.IsLatestBlock
 }

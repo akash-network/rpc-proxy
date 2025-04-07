@@ -38,6 +38,7 @@ func (f ProbeFunc) Probe(ctx context.Context, node Node) (Status, error) {
 // RPCProbe probes an RPC Node.
 // It queries the Node status through RPC and tries to set the latest block height globally.
 func RPCProbe(ctx context.Context, node Node) (Status, error) {
+	start := time.Now()
 	client, err := rpchttp.New(node.Address, "/")
 	if err != nil {
 		return Status{}, fmt.Errorf("getting RPC client status: %w", err)
@@ -54,6 +55,7 @@ func RPCProbe(ctx context.Context, node Node) (Status, error) {
 		CatchingUp:    status.SyncInfo.CatchingUp,
 		Reachable:     true,
 		IsLatestBlock: errLowBlock == nil,
+		Latency:       time.Since(start),
 	}, nil
 }
 
@@ -61,6 +63,7 @@ func RPCProbe(ctx context.Context, node Node) (Status, error) {
 // It checks if the node is catching up, queries the Node status through gRPC and tries to set the latest block
 // height globally.
 func GRPCProbe(ctx context.Context, node Node) (Status, error) {
+	start := time.Now()
 	creds := credentials.NewTLS(&tls.Config{
 		InsecureSkipVerify: false,
 	})
@@ -92,6 +95,7 @@ func GRPCProbe(ctx context.Context, node Node) (Status, error) {
 		CatchingUp:    catchingUp.Syncing,
 		Reachable:     true,
 		IsLatestBlock: errLowBlock == nil,
+		Latency:       time.Since(start),
 	}, nil
 }
 
@@ -111,6 +115,8 @@ type latestBlockResponse struct {
 // It checks if the node is catching up querying the REST endpoint, queries the Node latest block and tries to set the
 // height globally.
 func RESTProbe(ctx context.Context, node Node) (Status, error) {
+	start := time.Now()
+
 	client := &http.Client{}
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/syncing", node.Address), nil)
@@ -174,5 +180,6 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 		CatchingUp:    syncing.CatchingUp,
 		Reachable:     true,
 		IsLatestBlock: errLowBlock == nil,
+		Latency:       time.Since(start),
 	}, nil
 }

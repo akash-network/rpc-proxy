@@ -23,7 +23,7 @@ func NewRestProxy(
 			cfg: cfg,
 			ch:  ch,
 			log: log,
-			lb:  New(log),
+			lb:  NewRoundRobin(log),
 		},
 	}
 }
@@ -36,7 +36,7 @@ func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rest")
-	if srv := p.lb.Next(p.servers); srv != nil {
+	if srv := p.lb.Next(); srv != nil {
 		srv.ServeHTTP(w, r)
 		return
 	}

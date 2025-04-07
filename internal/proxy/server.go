@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"github.com/akash-network/rpc-proxy/internal/seed"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,7 +17,7 @@ import (
 
 // TODO: Replace these stats with prometheus metrics server.
 
-func newServer(name string, target *url.URL, cfg config.Config, log *slog.Logger) (*Server, error) {
+func newServer(name string, target *url.URL, cfg config.Config, log *slog.Logger, node seed.Node) (*Server, error) {
 	return &Server{
 		name:      name,
 		Url:       target,
@@ -25,6 +26,7 @@ func newServer(name string, target *url.URL, cfg config.Config, log *slog.Logger
 		successes: ttlslice.New[int](),
 		failures:  ttlslice.New[int](),
 		log:       log,
+		node:      node,
 	}, nil
 }
 
@@ -37,6 +39,7 @@ type Server struct {
 	failures     *ttlslice.Slice[int]
 	requestCount atomic.Int64
 	log          *slog.Logger
+	node         seed.Node
 }
 
 func (s *Server) ErrorRate() float64 {
@@ -50,8 +53,7 @@ func (s *Server) ErrorRate() float64 {
 }
 
 func (s *Server) Healthy() bool {
-	return s.pings.Last() < s.cfg.HealthyThreshold &&
-		s.ErrorRate() < s.cfg.HealthyErrorRateThreshold
+	return s.node.Healthy()
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
