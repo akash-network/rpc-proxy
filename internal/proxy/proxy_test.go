@@ -20,6 +20,8 @@ import (
 func TestRPCProxy(t *testing.T) {
 	serverList := generateServerList(t)
 
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ch := make(chan seed.Seed, 1)
@@ -29,7 +31,7 @@ func TestRPCProxy(t *testing.T) {
 		UnhealthyServerRecoverChancePct: 1,
 		HealthyErrorRateThreshold:       10,
 		HealthyErrorRateBucketTimeout:   time.Second * 10,
-	}, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	}, logger, NewRoundRobin(logger))
 
 	proxy.Start(ctx)
 
@@ -77,6 +79,7 @@ func TestRPCProxy(t *testing.T) {
 
 func TestRestProxy(t *testing.T) {
 	serverList := generateServerList(t)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -87,7 +90,7 @@ func TestRestProxy(t *testing.T) {
 		UnhealthyServerRecoverChancePct: 1,
 		HealthyErrorRateThreshold:       10,
 		HealthyErrorRateBucketTimeout:   time.Second * 10,
-	}, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	}, logger, NewRoundRobin(logger))
 
 	proxy.Start(ctx)
 

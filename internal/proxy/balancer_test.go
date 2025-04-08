@@ -158,11 +158,11 @@ func TestLatencyBased_Next(t *testing.T) {
 		selectedServers[server.name] = selectedServers[server.name] + 1
 	}
 
-	if math.Abs(lb.servers[0].Rate-0.9) > 1e-9 {
+	if math.Abs(lb.servers[0].Rate-0.9) > epsilon {
 		t.Errorf("expected server \"a\" to have a rate of 0.9, got %.2f instead", lb.servers[0].Rate)
 	}
 
-	if math.Abs(lb.servers[1].Rate-0.1) > 1e-9 {
+	if math.Abs(lb.servers[1].Rate-0.1) > epsilon {
 		t.Errorf("expected server \"b\" to have a rate of 0.1, got %.2f instead", lb.servers[1].Rate)
 	}
 

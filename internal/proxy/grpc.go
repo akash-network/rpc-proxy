@@ -10,25 +10,34 @@ import (
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
+// GRPCProxy is a wrapper around Proxy that provides gRPC-specific behavior.
+// It embeds the Proxy struct to reuse its core logic and configuration.
 type GRPCProxy struct {
 	Proxy
 }
 
+// NewGRPCProxy creates and returns a new instance of GRPCProxy.
+// It initializes the embedded Proxy with the given seed channel,
+// configuration, logger, and a custom load balancer.
 func NewGRPCProxy(
 	ch chan seed.Seed,
 	cfg config.Config,
 	log *slog.Logger,
+	lb LoadBalancer,
 ) *GRPCProxy {
 	return &GRPCProxy{
 		Proxy: Proxy{
 			cfg: cfg,
 			ch:  ch,
 			log: log,
-			lb:  NewRoundRobin(log),
+			lb:  lb,
 		},
 	}
 }
 
+// ServeHTTP handles incoming HTTP requests for the GRPCProxy.
+// It satisfies the http.Handler interface, allowing GRPCProxy to be used
+// directly with an HTTP server (e.g., http.ListenAndServe).
 func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if p.shuttingDown.Load() {
 		p.log.Error("proxy is shutting down")
@@ -70,6 +79,9 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusInternalServerError)
 }
 
+// Start begins the lifecycle of the GRPCProxy.
+// It delegates to the embedded Proxy's Start method, passing in the context
+// and the GRPCProxy's update function.
 func (p *GRPCProxy) Start(ctx context.Context) {
 	p.Proxy.Start(ctx, p.update)
 }

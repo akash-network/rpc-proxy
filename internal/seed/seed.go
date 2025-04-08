@@ -135,7 +135,11 @@ func (s *Seeder) fetch(ctx context.Context, log *slog.Logger, url string) (Seed,
 			continue
 		}
 
-		log.Info("added RPC server", "name", rpcProxy.Provider, "catching_up", status.CatchingUp, "latest_block", status.IsLatestBlock)
+		log.Info("added RPC server",
+			"name", rpcProxy.Provider,
+			"catching_up", status.CatchingUp,
+			"latest_block", status.IsLatestBlock,
+			"latency", fmt.Sprintf("%dms", status.Latency.Milliseconds()))
 		seed.APIs.RPC[i] = rpcProxy.WithStatus(status)
 	}
 
@@ -147,7 +151,11 @@ func (s *Seeder) fetch(ctx context.Context, log *slog.Logger, url string) (Seed,
 			continue
 		}
 
-		log.Info("added REST server", "name", restProxy.Provider, "catching_up", status.CatchingUp, "latest_block", status.IsLatestBlock)
+		log.Info("added REST server",
+			"name", restProxy.Provider,
+			"catching_up", status.CatchingUp,
+			"latest_block", status.IsLatestBlock,
+			"latency", fmt.Sprintf("%dms", status.Latency.Milliseconds()))
 		seed.APIs.Rest[i] = restProxy.WithStatus(status)
 	}
 
@@ -159,7 +167,11 @@ func (s *Seeder) fetch(ctx context.Context, log *slog.Logger, url string) (Seed,
 			continue
 		}
 
-		log.Info("added gRPC server", "name", grpcProxy.Provider, "catching_up", status.CatchingUp, "latest_block", status.IsLatestBlock)
+		log.Info("added gRPC server",
+			"name", grpcProxy.Provider,
+			"catching_up", status.CatchingUp,
+			"latest_block", status.IsLatestBlock,
+			"latency", fmt.Sprintf("%dms", status.Latency.Milliseconds()))
 		seed.APIs.GRPC[i] = grpcProxy.WithStatus(status)
 	}
 
