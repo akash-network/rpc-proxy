@@ -19,13 +19,13 @@ func Moving(window int) *MovingAverage {
 // MovingAverage computes a moving average over a fixed-size sliding window
 // of time.Duration values. It is safe for concurrent use.
 type MovingAverage struct {
-	mu        sync.Mutex      // protects durations and sum
-	window    int             // max number of durations to keep in the window
-	durations []time.Duration // recent durations within the window
-	sum       time.Duration   // sum of durations in the window
+	mu        sync.Mutex
+	window    int
+	durations []time.Duration
+	sum       time.Duration
 
-	avgMu   sync.RWMutex  // protects access to lastAvg
-	lastAvg time.Duration // last computed average
+	avgMu   sync.RWMutex
+	lastAvg time.Duration
 }
 
 // Reset clears all recorded durations and resets the moving average to zero.
