@@ -116,7 +116,6 @@ type latestBlockResponse struct {
 // height globally.
 func RESTProbe(ctx context.Context, node Node) (Status, error) {
 	start := time.Now()
-
 	client := &http.Client{}
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/syncing", node.Address), nil)
