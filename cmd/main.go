@@ -153,7 +153,7 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 
 	srv := &http.Server{
 		Addr:         cfg.Listen,
-		Handler:      m,
+		Handler:      cors(m),
 		TLSConfig:    am.TLSConfig(),
 		ReadTimeout:  time.Second * 10,
 		IdleTimeout:  time.Second * 10,
@@ -169,9 +169,7 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 
 func prepareGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.GRPCProxy) *http.Server {
 	mux := http.NewServeMux()
-
-	// Handle all requests with the proxy
-	mux.Handle("/", p)
+	mux.Handle("/", cors(p))
 
 	// Start HTTP/2.0 server.
 	grpcServer := &http.Server{
@@ -183,4 +181,20 @@ func prepareGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.GRPCProxy) 
 	}
 
 	return grpcServer
+}
+
+// cors is a simple middleware that enables CORS for all requests
+func cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
