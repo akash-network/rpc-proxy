@@ -9,24 +9,34 @@ import (
 	"strings"
 )
 
+// RPCProxy is a wrapper around Proxy that provides RPC-specific functionality.
+// It embeds the Proxy struct, inheriting its fields and behavior.
 type RPCProxy struct {
 	Proxy
 }
 
+// NewRPCProxy creates and returns a new instance of RPCProxy.
+// It initializes the embedded Proxy with the provided configuration,
+// seed channel, logger, and a load balancer.
 func NewRPCProxy(
 	ch chan seed.Seed,
 	cfg config.Config,
 	log *slog.Logger,
+	lb LoadBalancer,
 ) *RPCProxy {
 	return &RPCProxy{
 		Proxy: Proxy{
 			cfg: cfg,
 			ch:  ch,
 			log: log,
+			lb:  lb,
 		},
 	}
 }
 
+// ServeHTTP handles incoming HTTP requests for the RPCProxy.
+// It satisfies the http.Handler interface, allowing RPCProxy to be used
+// directly with an HTTP server (e.g., http.ListenAndServe).
 func (p *RPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if p.shuttingDown.Load() {
 		p.log.Error("proxy is shutting down")
@@ -35,7 +45,7 @@ func (p *RPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rpc")
-	if srv := p.next(); srv != nil {
+	if srv := p.lb.Next(); srv != nil {
 		srv.ServeHTTP(w, r)
 		return
 	}
@@ -44,6 +54,9 @@ func (p *RPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusInternalServerError)
 }
 
+// Start begins the lifecycle of the RPCProxy.
+// It delegates to the embedded Proxy's Start method, passing in the context
+// and the GRPCProxy's update function.
 func (p *RPCProxy) Start(ctx context.Context) {
 	p.Proxy.Start(ctx, p.update)
 }

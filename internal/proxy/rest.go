@@ -9,24 +9,34 @@ import (
 	"strings"
 )
 
+// RestProxy is a wrapper around Proxy that provides REST-specific behavior.
+// It embeds the Proxy struct to reuse shared logic and configuration.
 type RestProxy struct {
 	Proxy
 }
 
+// NewRestProxy creates and returns a new instance of RestProxy.
+// It initializes the embedded Proxy with the given seed channel,
+// configuration, logger, and load balancer.
 func NewRestProxy(
 	ch chan seed.Seed,
 	cfg config.Config,
 	log *slog.Logger,
+	lb LoadBalancer,
 ) *RestProxy {
 	return &RestProxy{
 		Proxy: Proxy{
 			cfg: cfg,
 			ch:  ch,
 			log: log,
+			lb:  lb,
 		},
 	}
 }
 
+// ServeHTTP handles incoming HTTP requests for the RestProxy.
+// It satisfies the http.Handler interface, allowing RestProxy to be used
+// directly with an HTTP server (e.g., http.ListenAndServe).
 func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if p.shuttingDown.Load() {
 		p.log.Error("proxy is shutting down")
@@ -35,7 +45,7 @@ func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rest")
-	if srv := p.next(); srv != nil {
+	if srv := p.lb.Next(); srv != nil {
 		srv.ServeHTTP(w, r)
 		return
 	}
@@ -44,6 +54,9 @@ func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusInternalServerError)
 }
 
+// Start begins the lifecycle of the RestProxy.
+// It delegates to the embedded Proxy's Start method, passing in the context
+// and the RestProxy's update function.
 func (p *RestProxy) Start(ctx context.Context) {
 	p.Proxy.Start(ctx, p.update)
 }
