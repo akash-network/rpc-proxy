@@ -142,6 +142,8 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 	}))
 	m.Handle("/rpc/", rpcProxyHandler)
 	m.Handle("/rest/", restProxyHandler)
+	m.Handle("/rpc", rpcProxyHandler)
+	m.Handle("/rest", restProxyHandler)
 	m.Handle("/status", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := indexTpl.Execute(w, map[string][]proxy.ServerStat{
 			"RPC":  rpcProxyHandler.Stats(),
@@ -183,7 +185,7 @@ func prepareGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.GRPCProxy) 
 	return grpcServer
 }
 
-// cors is a simple middleware that enables CORS for all requests
+// cors is a middleware that enables CORS for all requests
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
