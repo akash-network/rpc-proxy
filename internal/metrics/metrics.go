@@ -35,7 +35,7 @@ func init() {
 	prometheus.MustRegister(RequestCount)
 }
 
-// UpdateNodgeCount updates the node count for a specific type
+// UpdateNodeCount updates the node count for a specific type
 func UpdateNodeCount(nodeType string, count float64) {
 	NodeCounts.WithLabelValues(nodeType).Set(count)
 }
