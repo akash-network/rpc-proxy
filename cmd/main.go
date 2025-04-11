@@ -40,9 +40,9 @@ func main() {
 		ChainID:             cfg.ChainID,
 	}
 	seeder := seed.New(seederCfg, log, rpcListener, restListener, grpcListener)
-	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg, log)
-	restProxyHandler := proxy.NewRestProxy(restListener, cfg, log)
-	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, cfg, log)
+	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg, log, proxy.NewLatencyBased(log))
+	restProxyHandler := proxy.NewRestProxy(restListener, cfg, log, proxy.NewLatencyBased(log))
+	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, cfg, log, proxy.NewLatencyBased(log))
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
