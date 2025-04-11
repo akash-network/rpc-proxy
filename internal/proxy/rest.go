@@ -2,11 +2,13 @@ package proxy
 
 import (
 	"context"
-	"github.com/akash-network/rpc-proxy/internal/config"
-	"github.com/akash-network/rpc-proxy/internal/seed"
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/akash-network/rpc-proxy/internal/config"
+	"github.com/akash-network/rpc-proxy/internal/metrics"
+	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
 // RestProxy is a wrapper around Proxy that provides REST-specific behavior.
@@ -47,6 +49,7 @@ func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rest")
 	if srv := p.lb.Next(); srv != nil {
 		srv.ServeHTTP(w, r)
+		metrics.IncrementRequestCount("rest", srv.Url.Host)
 		return
 	}
 
@@ -68,4 +71,6 @@ func (p *RestProxy) update(seed seed.Seed) {
 		p.log.Error("could not update seed", "err", err)
 	}
 	p.log.Info("updated server list for REST", "total", len(p.servers))
+	metrics.UpdateNodeCount("rest", float64(len(p.servers)))
+
 }

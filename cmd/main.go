@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
+	"github.com/akash-network/rpc-proxy/internal/metrics"
 	"github.com/akash-network/rpc-proxy/internal/proxy"
 	"github.com/akash-network/rpc-proxy/internal/seed"
 	"golang.org/x/crypto/acme/autocert"
@@ -29,6 +30,15 @@ func main() {
 	cfg := config.Must()
 	// TODO: Logging configurations through context propagation??
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	// Initialize metrics
+	metricsServer := metrics.PrepareMetricsServer(":4000")
+	go func() {
+		log.Info("metrics server", "addr", metricsServer.Addr)
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			panic(err)
+		}
+	}()
 
 	rpcListener := make(chan seed.Seed, 1)
 	restListener := make(chan seed.Seed, 1)
@@ -71,6 +81,11 @@ func main() {
 
 		if err := grpcServer.Shutdown(ctx); err != nil {
 			log.Error("could not close server", "err", err)
+			os.Exit(1)
+		}
+
+		if err := metricsServer.Shutdown(ctx); err != nil {
+			log.Error("could not close metrics server", "err", err)
 			os.Exit(1)
 		}
 	}()
