@@ -145,6 +145,7 @@ func newReverseProxy(srv *Server, log *slog.Logger) *httputil.ReverseProxy {
 			response.Header.Del("Access-Control-Allow-Origin")
 			response.Header.Del("Access-Control-Allow-Methods")
 			response.Header.Del("Access-Control-Allow-Headers")
+
 			return nil
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
