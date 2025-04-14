@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -153,9 +154,16 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 		}
 	}))
 
+	// TODO: make this part of the configuration in configuration PR.
+	corsHeaders := map[string]string{
+		cors.AccessControlAllowOrigin:  "*",
+		cors.AccessControlAllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
+		cors.AccessControlAllowHeaders: "Content-Type, Authorization",
+	}
+
 	srv := &http.Server{
 		Addr:         cfg.Listen,
-		Handler:      cors(m),
+		Handler:      cors.WithCorsMiddleware(corsHeaders, m),
 		TLSConfig:    am.TLSConfig(),
 		ReadTimeout:  time.Second * 10,
 		IdleTimeout:  time.Second * 10,
@@ -170,8 +178,15 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 }
 
 func prepareGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.GRPCProxy) *http.Server {
+	// TODO: make this part of the configuration in configuration PR.
+	corsHeaders := map[string]string{
+		cors.AccessControlAllowOrigin:  "*",
+		cors.AccessControlAllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
+		cors.AccessControlAllowHeaders: "Content-Type, Authorization",
+	}
+
 	mux := http.NewServeMux()
-	mux.Handle("/", cors(p))
+	mux.Handle("/", cors.WithCorsMiddleware(corsHeaders, p))
 
 	// Start HTTP/2.0 server.
 	grpcServer := &http.Server{
@@ -183,20 +198,4 @@ func prepareGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.GRPCProxy) 
 	}
 
 	return grpcServer
-}
-
-// cors is a middleware that enables CORS for all requests
-func cors(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
 }

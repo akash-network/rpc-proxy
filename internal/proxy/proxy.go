@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
@@ -141,11 +142,7 @@ func newReverseProxy(srv *Server, log *slog.Logger) *httputil.ReverseProxy {
 			log.Info("proxying request", "method", request.Method, "target", request.URL, "source", request.URL)
 		},
 		ModifyResponse: func(response *http.Response) error {
-			// Remove CORS headers from proxied response since we handle them in middleware
-			response.Header.Del("Access-Control-Allow-Origin")
-			response.Header.Del("Access-Control-Allow-Methods")
-			response.Header.Del("Access-Control-Allow-Headers")
-
+			cors.DeleteCorsHeaders(response)
 			return nil
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
