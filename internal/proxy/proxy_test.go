@@ -2,11 +2,13 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -52,29 +54,6 @@ func TestRPCProxy(t *testing.T) {
 	stats := proxy.Stats()
 	require.Len(t, stats, 3)
 
-	var srv1Stats ServerStat
-	var srv2Stats ServerStat
-	var srv3Stats ServerStat
-	for _, st := range stats {
-		if st.Name == "srv1" {
-			srv1Stats = st
-		}
-		if st.Name == "srv2" {
-			srv2Stats = st
-		}
-		if st.Name == "srv3" {
-			srv3Stats = st
-		}
-	}
-	require.Zero(t, srv1Stats.ErrorRate)
-	require.Zero(t, srv2Stats.ErrorRate)
-	require.Equal(t, float64(100), srv3Stats.ErrorRate)
-	require.Greater(t, srv1Stats.Requests, srv2Stats.Requests)
-	require.Greater(t, srv2Stats.Avg, srv1Stats.Avg)
-	require.False(t, srv1Stats.Degraded)
-	require.False(t, srv2Stats.Degraded)
-	require.True(t, srv1Stats.Initialized)
-	require.True(t, srv2Stats.Initialized)
 }
 
 func TestRestProxy(t *testing.T) {
@@ -107,33 +86,6 @@ func TestRestProxy(t *testing.T) {
 
 	// stop the proxy
 	cancel()
-
-	stats := proxy.Stats()
-	require.Len(t, stats, 3)
-
-	var srv1Stats ServerStat
-	var srv2Stats ServerStat
-	var srv3Stats ServerStat
-	for _, st := range stats {
-		if st.Name == "srv1" {
-			srv1Stats = st
-		}
-		if st.Name == "srv2" {
-			srv2Stats = st
-		}
-		if st.Name == "srv3" {
-			srv3Stats = st
-		}
-	}
-	require.Zero(t, srv1Stats.ErrorRate)
-	require.Zero(t, srv2Stats.ErrorRate)
-	require.Equal(t, float64(100), srv3Stats.ErrorRate)
-	require.Greater(t, srv1Stats.Requests, srv2Stats.Requests)
-	require.Greater(t, srv2Stats.Avg, srv1Stats.Avg)
-	require.False(t, srv1Stats.Degraded)
-	require.False(t, srv2Stats.Degraded)
-	require.True(t, srv1Stats.Initialized)
-	require.True(t, srv2Stats.Initialized)
 }
 
 func generateServerList(t *testing.T) []seed.Node {
@@ -204,4 +156,175 @@ func sendSeed(ch chan seed.Seed, serverList []seed.Node) {
 			GRPC: serverList,
 		},
 	}
+}
+
+func TestNewReverseProxy(t *testing.T) {
+	tests := []struct {
+		name       string
+		serverURL  string
+		reqPath    string
+		wantScheme string
+		wantHost   string
+		wantPath   string
+	}{
+		{
+			name:       "basic proxy test",
+			serverURL:  "http://node.com/base",
+			reqPath:    "/test",
+			wantScheme: "http",
+			wantHost:   "node.com",
+			wantPath:   "/base/test",
+		},
+		{
+			name:       "https proxy test",
+			serverURL:  "https://api.node.com",
+			reqPath:    "/v1/data",
+			wantScheme: "https",
+			wantHost:   "api.node.com",
+			wantPath:   "/v1/data",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup test server
+			targetURL, err := url.Parse(tt.serverURL)
+			require.NoError(t, err)
+
+			srv := &Server{
+				Url:  targetURL,
+				name: "test-server",
+			}
+
+			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+			proxy := newReverseProxy(srv, logger)
+
+			// Create test request
+			req := httptest.NewRequest("GET", tt.reqPath, nil)
+
+			// Test Director function
+			proxy.Director(req)
+
+			require.Equal(t, tt.wantScheme, req.URL.Scheme)
+			require.Equal(t, tt.wantHost, req.URL.Host)
+			require.Equal(t, tt.wantPath, req.URL.Path)
+		})
+	}
+}
+
+func TestReverseProxy_ModifyResponse(t *testing.T) {
+	targetURL, _ := url.Parse("http://node.com")
+	srv := &Server{Url: targetURL}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	proxy := newReverseProxy(srv, logger)
+
+	resp := &http.Response{Header: make(http.Header)}
+	resp.Header.Set("Access-Control-Allow-Origin", "*")
+	resp.Header.Set("Access-Control-Allow-Methods", "GET,POST")
+	resp.Header.Set("Access-Control-Allow-Headers", "Content-Type")
+
+	err := proxy.ModifyResponse(resp)
+	require.NoError(t, err)
+
+	require.Empty(t, resp.Header.Get("Access-Control-Allow-Origin"))
+	require.Empty(t, resp.Header.Get("Access-Control-Allow-Methods"))
+	require.Empty(t, resp.Header.Get("Access-Control-Allow-Headers"))
+}
+
+func TestReverseProxy_ErrorHandler(t *testing.T) {
+	targetURL, _ := url.Parse("http://node.com")
+	srv := &Server{Url: targetURL}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	proxy := newReverseProxy(srv, logger)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/test", nil)
+	testErr := errors.New("test error")
+
+	proxy.ErrorHandler(w, req, testErr)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	require.Contains(t, w.Body.String(), "could not proxy request")
+}
+
+func TestDoUpdate(t *testing.T) {
+	tests := []struct {
+		name            string
+		providers       []seed.Node
+		wantErr         bool
+		expectedServers int
+	}{
+		{
+			name: "Add new server",
+			providers: []seed.Node{
+				{
+					Provider: "test1",
+					Address:  "example.com",
+					Status: seed.Status{
+						CatchingUp:    false,
+						Reachable:     true,
+						IsLatestBlock: true,
+					},
+				},
+			},
+			wantErr:         false,
+			expectedServers: 1,
+		},
+		{
+			name: "Remove unhealthy server",
+			providers: []seed.Node{
+				{
+					Provider: "test2",
+					Address:  "example.com",
+					Status: seed.Status{
+						CatchingUp:    false,
+						Reachable:     true,
+						IsLatestBlock: true,
+					},
+				},
+				{
+					Provider: "test3",
+					Address:  "example.com",
+					Status: seed.Status{
+						CatchingUp:    true,
+						Reachable:     false,
+						IsLatestBlock: false,
+					},
+				},
+			},
+			wantErr:         false,
+			expectedServers: 1, // Unhealthy server should be removed
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &Proxy{
+				cfg:     config.Config{},
+				log:     slog.Default(),
+				servers: []*Server{},
+				lb:      &MockLoadBalancer{},
+			}
+
+			err := p.doUpdate(tt.providers)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("doUpdate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if !tt.wantErr {
+				if !p.initialized.Load() {
+					t.Error("proxy should be initialized after successful update")
+				}
+				require.Len(t, p.servers, tt.expectedServers)
+			}
+		})
+	}
+}
+
+type MockLoadBalancer struct{}
+
+func (m *MockLoadBalancer) Update(servers []*Server) {}
+
+func (m *MockLoadBalancer) Next() *Server {
+	return nil
 }

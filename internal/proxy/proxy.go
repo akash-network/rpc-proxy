@@ -3,7 +3,10 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 	"log/slog"
+	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"slices"
 	"sort"
@@ -107,6 +110,10 @@ func (p *Proxy) doUpdate(providers []seed.Node) error {
 	return nil
 }
 
+// Start initializes and begins the proxy's update loop.
+// It ensures the loop is started only once using sync.Once.
+// The loop continuously listens for new seed data from the channel and calls the provided update function.
+// When the context is cancelled, it marks the proxy as shutting down and exits.
 func (p *Proxy) Start(ctx context.Context, update Updater) {
 	p.init.Do(func() {
 		go func() {
@@ -121,4 +128,26 @@ func (p *Proxy) Start(ctx context.Context, update Updater) {
 			}
 		}()
 	})
+}
+
+// newReverseProxy creates a configured httputil.ReverseProxy with common settings.
+func newReverseProxy(srv *Server, log *slog.Logger) *httputil.ReverseProxy {
+	return &httputil.ReverseProxy{
+		Director: func(request *http.Request) {
+			request.URL.Scheme = srv.Url.Scheme
+			request.URL.Host = srv.Url.Host
+			request.URL.Path = srv.Url.Path + request.URL.Path
+			request.Host = srv.Url.Host
+
+			log.Info("proxying request", "method", request.Method, "target", request.URL, "source", request.URL)
+		},
+		ModifyResponse: func(response *http.Response) error {
+			cors.DeleteCorsHeaders(response)
+			return nil
+		},
+		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
+			log.Error("proxy error", "error", err)
+			http.Error(writer, "could not proxy request", http.StatusInternalServerError)
+		},
+	}
 }
