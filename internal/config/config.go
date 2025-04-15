@@ -55,7 +55,6 @@ type CORSConfig struct {
 	AllowHeaders string `mapstructure:"allow-headers"`
 }
 
-//go:generate go run github.com/g4s8/envdoc@latest -output ../../config.md -env-prefix AKASH_PROXY_ -types Config
 type Config struct {
 	Server ServerConfig `mapstructure:"server"`
 	TLS    TLSConfig    `mapstructure:"tls"`

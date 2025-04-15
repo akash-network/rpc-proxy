@@ -83,7 +83,7 @@ func init() {
 	rootCmd.PersistentFlags().String("cors.allow-headers", "Content-Type, Authorization", "CORS allowed headers")
 
 	// Configuration file support
-	rootCmd.PersistentFlags().String("config", "", "config file (default is $HOME/.akash-proxy/config.yaml)")
+	rootCmd.PersistentFlags().StringP("config", "c", "", "config file (default is $HOME/.akash-proxy/config.yaml)")
 }
 
 func initConfig(cmd *cobra.Command) error {
