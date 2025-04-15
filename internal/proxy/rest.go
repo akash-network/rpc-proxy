@@ -21,7 +21,7 @@ type RestProxy struct {
 // configuration, logger, and load balancer.
 func NewRestProxy(
 	ch chan seed.Seed,
-	cfg config.Config,
+	cfg config.HealthConfig,
 	log *slog.Logger,
 	lb LoadBalancer,
 ) *RestProxy {

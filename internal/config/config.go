@@ -1,63 +1,82 @@
 package config
 
 import (
+	"strings"
+	"sync"
 	"time"
 
-	"github.com/caarlos0/env/v11"
+	"github.com/spf13/viper"
 )
+
+var Replacer = strings.NewReplacer(".", "_", "-", "_")
+
+type ServerConfig struct {
+	Listen     string        `mapstructure:"listen"`
+	ListenGRPC string        `mapstructure:"listen-grpc"`
+	Timeouts   TimeoutConfig `mapstructure:"timeouts"`
+}
+
+type TimeoutConfig struct {
+	Read  time.Duration `mapstructure:"read"`
+	Write time.Duration `mapstructure:"write"`
+	Idle  time.Duration `mapstructure:"idle"`
+}
+
+type TLSConfig struct {
+	Autocert AutocertConfig `mapstructure:"autocert"`
+	Cert     string         `mapstructure:"cert"`
+	Key      string         `mapstructure:"key"`
+}
+
+type AutocertConfig struct {
+	Email string   `mapstructure:"email"`
+	Hosts []string `mapstructure:"hosts"`
+}
+
+type SeedConfig struct {
+	URL             string        `mapstructure:"url"`
+	RefreshInterval time.Duration `mapstructure:"refresh-interval"`
+	ChainID         string        `mapstructure:"chain-id"`
+}
+
+type HealthConfig struct {
+	HealthyThreshold    time.Duration `mapstructure:"healthy-threshold"`
+	ProxyRequestTimeout time.Duration `mapstructure:"proxy-request-timeout"`
+}
+
+type CORSConfig struct {
+	AllowOrigin  string `mapstructure:"allow-origin"`
+	AllowMethods string `mapstructure:"allow-methods"`
+	AllowHeaders string `mapstructure:"allow-headers"`
+}
 
 //go:generate go run github.com/g4s8/envdoc@latest -output ../../config.md -env-prefix AKASH_PROXY_ -types Config
 type Config struct {
-	// Address to listen to.
-	Listen string `env:"LISTEN" envDefault:":25567"`
-
-	// Address to listen to on GRPC proxy.
-	ListenGRPC string `env:"LISTEN_GRPC" envDefault:":9090"`
-
-	// Autocert account email.
-	AutocertEmail string `env:"AUTOCERT_EMAIL"`
-
-	// Autocert domains.
-	AutocertHosts []string `env:"AUTOCERT_HOSTS"`
-
-	// TLS certificate to use. If empty, will try to use autocert.
-	TLSCert string `env:"TLS_CERT"`
-
-	// TLS key to use. If empty, will try to use autocert.
-	TLSKey string `env:"TLS_KEY"`
-
-	// Proxy seed URL to fetch for server updates.
-	SeedURL string `env:"SEED_URL" envDefault:"https://raw.githubusercontent.com/cosmos/chain-registry/master/akash/chain.json"`
-
-	// How frequently fetch SEED_URL for updates.
-	SeedRefreshInterval time.Duration `env:"SEED_REFRESH_INTERVAL" envDefault:"5m"`
-
-	// Expected chain ID.
-	ChainID string `env:"CHAIN_ID" envDefault:"akashnet-2"`
-
-	// How slow on average a node needs to be to be marked as unhealthy.
-	HealthyThreshold time.Duration `env:"HEALTHY_THRESHOLD" envDefault:"10s"`
-
-	// Percentage of request errors deemed acceptable.
-	HealthyErrorRateThreshold float64 `env:"HEALTHY_ERROR_RATE_THRESHOLD" envDefault:"30"`
-
-	// How long in the past requests are considered to check for status codes.
-	HealthyErrorRateBucketTimeout time.Duration `env:"HEALTHY_ERROR_RATE_BUCKET_TIMEOUT" envDefault:"1m"`
-
-	// Request timeout for a proxied request.
-	ProxyRequestTimeout time.Duration `env:"PROXY_REQUEST_TIMEOUT" envDefault:"15s"`
-
-	// How much chance (in %, 0-100), a node marked as unhealthy have to get a
-	// request again and recover.
-	UnhealthyServerRecoverChancePct int `env:"UNHEALTHY_SERVER_RECOVERY_CHANCE_PERCENT" envDefault:"1"`
+	Server ServerConfig `mapstructure:"server"`
+	TLS    TLSConfig    `mapstructure:"tls"`
+	Seed   SeedConfig   `mapstructure:"seed"`
+	Health HealthConfig `mapstructure:"health"`
+	CORS   CORSConfig   `mapstructure:"cors"`
 }
 
-func Must() Config {
-	cfg, err := env.ParseAsWithOptions[Config](env.Options{
-		Prefix: "AKASH_PROXY_",
-	})
-	if err != nil {
-		panic("could not get config: " + err.Error())
+var (
+	// cfg is the global config instance
+	cfg Config
+	mu  sync.Mutex
+)
+
+// Load reads the configuration from environment variables and unmarshals it into the Config struct.
+func Load(v *viper.Viper) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	return v.Unmarshal(&cfg)
+}
+
+// Must returns the current configuration or panics if it cannot be loaded.
+func Must(v *viper.Viper) Config {
+	if err := Load(v); err != nil {
+		panic("could not load config: " + err.Error())
 	}
 	return cfg
 }

@@ -1,28 +1,57 @@
-# Proxy
+# Akash RPC Proxy
 
-Load balancer and proxy for the akash network.
+A proxy server for Akash RPC nodes that provides load balancing and automatic failover.
 
-See [config.md](./config.md) for configuration details.
+## Features
 
----
+- Load balancing across multiple RPC nodes
+- Automatic failover when nodes become unhealthy
+- Support for both HTTP and gRPC endpoints
+- Automatic TLS certificate management via Let's Encrypt
+- Configurable health checks and error rate thresholds
 
-## HTTPS Localhost
+## Running the Proxy
 
-Easiest way is to use [mkcert](https://github.com/FiloSottile/mkcert).
-Make sure to install the untrusted localhost certificate with `mkcert -install`.
+### Basic Usage
 
-Create the certificate and key, and set them:
-
-```sh
-mkcert localhost
-mkcert -install
-
-export AKASH_PROXY_TLS_KEY=localhost-key.pem
-export AKASH_PROXY_TLS_CERT=localhost.pem
+```bash
+# Run with default settings
+go run cmd/main.go
 ```
 
-And start the server by running `go run cmd/main.go`.
+### With TLS Certificates
 
-## Testing
+You can run the proxy with TLS certificates in two ways:
 
-Test the proxy by running `grpcurl localhost:9090 list`.
+1. Using Let's Encrypt (automatic certificate management):
+```bash
+go run cmd/main.go \
+  --autocert-email=your-email@example.com \
+  --autocert-hosts=your-domain.com,another-domain.com
+```
+
+2. Using your own certificates:
+```bash
+# Using localhost certificates (for development)
+go run cmd/main.go \
+  --tls-cert=./localhost.pem \
+  --tls-key=./localhost-key.pem
+
+# Or using environment variables
+export AKASH_PROXY_TLS_CERT=localhost.pem
+export AKASH_PROXY_TLS_KEY=localhost-key.pem
+go run cmd/main.go
+
+# Or using a config file
+go run cmd/main.go --config=./config/local.yaml
+```
+
+## Building
+
+```bash
+go build -o akash-rpc-proxy
+```
+
+## License
+
+MIT
