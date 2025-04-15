@@ -11,6 +11,9 @@
  - `AKASH_PROXY_SEED_URL` (default: `https://raw.githubusercontent.com/cosmos/chain-registry/master/akash/chain.json`) - Proxy seed URL to fetch for server updates.
  - `AKASH_PROXY_SEED_REFRESH_INTERVAL` (default: `5m`) - How frequently fetch SEED_URL for updates.
  - `AKASH_PROXY_CHAIN_ID` (default: `akashnet-2`) - Expected chain ID.
+ - `AKASH_PROXY_SEED_ADDITIONAL_NODES_RPC` (comma-separated) - List of additional RPC nodes.
+ - `AKASH_PROXY_SEED_ADDITIONAL_NODES_REST` (comma-separated) - List of additional REST nodes.
+ - `AKASH_PROXY_SEED_ADDITIONAL_NODES_GRPC` (comma-separated) - List of additional gRPC nodes.
  - `AKASH_PROXY_HEALTHY_THRESHOLD` (default: `10s`) - How slow on average a node needs to be to be marked as unhealthy.
  - `AKASH_PROXY_HEALTHY_ERROR_RATE_THRESHOLD` (default: `30`) - Percentage of request errors deemed acceptable.
  - `AKASH_PROXY_HEALTHY_ERROR_RATE_BUCKET_TIMEOUT` (default: `1m`) - How long in the past requests are considered to check for status codes.

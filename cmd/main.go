@@ -69,6 +69,9 @@ func init() {
 	rootCmd.PersistentFlags().String("seed.url", "https://raw.githubusercontent.com/cosmos/chain-registry/master/akash/chain.json", "URL to fetch initial node list")
 	rootCmd.PersistentFlags().Duration("seed.refresh-interval", 5*time.Minute, "How often to refresh node list")
 	rootCmd.PersistentFlags().String("seed.chain-id", "akashnet-2", "Expected chain ID")
+	rootCmd.PersistentFlags().StringSlice("seed.additional-nodes.rpc", []string{}, "Comma-separated list of additional RPC nodes")
+	rootCmd.PersistentFlags().StringSlice("seed.additional-nodes.rest", []string{}, "Comma-separated list of additional REST nodes")
+	rootCmd.PersistentFlags().StringSlice("seed.additional-nodes.grpc", []string{}, "Comma-separated list of additional gRPC nodes")
 
 	// Health configuration
 	rootCmd.PersistentFlags().Duration("health.healthy-threshold", 10*time.Second, "Response time threshold for healthy nodes")
@@ -125,6 +128,15 @@ func runProxy() {
 		SeedURL:             cfg.Seed.URL,
 		SeedRefreshInterval: cfg.Seed.RefreshInterval,
 		ChainID:             cfg.Seed.ChainID,
+		AdditionalNodes: struct {
+			RPC  []string
+			REST []string
+			GRPC []string
+		}{
+			RPC:  cfg.Seed.AdditionalNodes.RPC,
+			REST: cfg.Seed.AdditionalNodes.REST,
+			GRPC: cfg.Seed.AdditionalNodes.GRPC,
+		},
 	}
 	seeder := seed.New(seederCfg, log, rpcListener, restListener, grpcListener)
 	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewLatencyBased(log))

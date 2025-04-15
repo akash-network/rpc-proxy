@@ -1,6 +1,6 @@
 server:
   listen: ":8080"
-  listen_grpc: ":9091"
+  listen-grpc: ":9091"
   timeouts:
     read: "10s"
     write: "10s"
@@ -16,13 +16,17 @@ tls:
 seed:
   url: "https://raw.githubusercontent.com/cosmos/chain-registry/master/akash/chain.json"
   refresh_interval: "5m"
-  chain_id: "akashnet-2"
+  chain-id: "akashnet-2"
+  additional-nodes:
+    rpc: []
+    rest: []
+    grpc: []
 
 health:
-  healthy_threshold: "10s"
-  proxy_request_timeout: "15s"
+  healthy-threshold: "10s"
+  proxy-request-timeout: "15s"
 
 cors:
-  allow_origin: "*"
-  allow_methods: "GET, POST, PUT, DELETE, OPTIONS"
-  allow_headers: "Content-Type, Authorization"
+  allow-origin: "*"
+  allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+  allow-headers: "Content-Type, Authorization"

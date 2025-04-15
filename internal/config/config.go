@@ -37,6 +37,11 @@ type SeedConfig struct {
 	URL             string        `mapstructure:"url"`
 	RefreshInterval time.Duration `mapstructure:"refresh-interval"`
 	ChainID         string        `mapstructure:"chain-id"`
+	AdditionalNodes struct {
+		RPC  []string `mapstructure:"rpc"`
+		REST []string `mapstructure:"rest"`
+		GRPC []string `mapstructure:"grpc"`
+	} `mapstructure:"additional-nodes"`
 }
 
 type HealthConfig struct {
