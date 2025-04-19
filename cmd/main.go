@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -157,6 +158,8 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 	}))
 	m.Handle("/rpc/", rpcProxyHandler)
 	m.Handle("/rest/", restProxyHandler)
+	m.Handle("/rpc", rpcProxyHandler)
+	m.Handle("/rest", restProxyHandler)
 	m.Handle("/status", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := indexTpl.Execute(w, map[string][]proxy.ServerStat{
 			"RPC":  rpcProxyHandler.Stats(),
@@ -166,9 +169,16 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 		}
 	}))
 
+	// TODO: make this part of the configuration in configuration PR.
+	corsHeaders := map[string]string{
+		cors.AccessControlAllowOrigin:  "*",
+		cors.AccessControlAllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
+		cors.AccessControlAllowHeaders: "Content-Type, Authorization",
+	}
+
 	srv := &http.Server{
 		Addr:         cfg.Listen,
-		Handler:      m,
+		Handler:      cors.WithCorsMiddleware(corsHeaders, m),
 		TLSConfig:    am.TLSConfig(),
 		ReadTimeout:  time.Second * 10,
 		IdleTimeout:  time.Second * 10,
@@ -183,10 +193,15 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 }
 
 func prepareGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.GRPCProxy) *http.Server {
-	mux := http.NewServeMux()
+	// TODO: make this part of the configuration in configuration PR.
+	corsHeaders := map[string]string{
+		cors.AccessControlAllowOrigin:  "*",
+		cors.AccessControlAllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
+		cors.AccessControlAllowHeaders: "Content-Type, Authorization",
+	}
 
-	// Handle all requests with the proxy
-	mux.Handle("/", p)
+	mux := http.NewServeMux()
+	mux.Handle("/", cors.WithCorsMiddleware(corsHeaders, p))
 
 	// Start HTTP/2.0 server.
 	grpcServer := &http.Server{

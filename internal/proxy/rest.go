@@ -48,7 +48,8 @@ func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rest")
 	if srv := p.lb.Next(); srv != nil {
-		srv.ServeHTTP(w, r)
+		proxy := newReverseProxy(srv, p.log)
+		proxy.ServeHTTP(w, r)
 		metrics.IncrementRequestCount("rest", srv.Url.Host)
 		return
 	}
