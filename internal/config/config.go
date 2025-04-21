@@ -65,8 +65,7 @@ type Config struct {
 // Must returns the current configuration or panics if it cannot be loaded.
 func Must(v *viper.Viper) Config {
 	var cfg Config
-	err := v.Unmarshal(&cfg)
-	if err != nil {
+	if err := v.Unmarshal(&cfg); err != nil {
 		return Config{}
 	}
 
