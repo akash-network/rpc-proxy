@@ -74,4 +74,7 @@ func (p *RestProxy) update(seed seed.Seed) {
 	p.log.Info("updated server list for REST", "total", len(p.servers))
 	metrics.UpdateNodeCount("rest", float64(len(p.servers)))
 
+	for _, node := range seed.APIs.Rest { // Update health status for each REST node
+		metrics.UpdateNodeHealth("rest", node.Address, node.Healthy())
+	}
 }

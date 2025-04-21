@@ -98,4 +98,8 @@ func (p *GRPCProxy) update(seed seed.Seed) {
 	}
 	p.log.Info("updated server list for gRPC", "total", len(p.servers))
 	metrics.UpdateNodeCount("grpc", float64(len(p.servers)))
+
+	for _, node := range seed.APIs.GRPC { // Update health status for each gRPC node
+		metrics.UpdateNodeHealth("grpc", node.Address, node.Healthy())
+	}
 }

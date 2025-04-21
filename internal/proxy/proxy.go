@@ -3,7 +3,6 @@ package proxy
 import (
 	"context"
 	"fmt"
-	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
@@ -13,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/akash-network/rpc-proxy/internal/metrics"
+	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/seed"
@@ -143,6 +145,7 @@ func newReverseProxy(srv *Server, log *slog.Logger) *httputil.ReverseProxy {
 		},
 		ModifyResponse: func(response *http.Response) error {
 			cors.DeleteCorsHeaders(response)
+			metrics.IncrementRequestStatusCount("rpc", srv.Url.String(), response.StatusCode)
 			return nil
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {

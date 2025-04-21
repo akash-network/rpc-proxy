@@ -50,7 +50,7 @@ func (p *RPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if srv := p.lb.Next(); srv != nil {
 		proxy := newReverseProxy(srv, p.log)
 		proxy.ServeHTTP(w, r)
-		metrics.IncrementRequestCount("rpc", srv.Url.Host)
+		metrics.IncrementRequestCount("rpc", srv.Url.String())
 		return
 	}
 
@@ -73,4 +73,8 @@ func (p *RPCProxy) update(seed seed.Seed) {
 	}
 	p.log.Info("updated server list for RPC", "total", len(p.servers))
 	metrics.UpdateNodeCount("rpc", float64(len(p.servers)))
+
+	for _, node := range seed.APIs.RPC { // Update health status for each RPC node
+		metrics.UpdateNodeHealth("rpc", node.Address, node.Healthy())
+	}
 }
