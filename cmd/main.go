@@ -33,24 +33,45 @@ import (
 //go:embed index.html
 var index []byte
 
-var V = viper.New()
+func NewRootCmd(v *viper.Viper) *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use:   "akash-proxy",
+		Short: "Akash Proxy - A load balancer and proxy for Akash network nodes",
+		Long:  "Akash Proxy provides load balancing and automatic failover for Akash network RPC, gRPC and REST nodes.",
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			v.SetEnvPrefix("AKASH_PROXY")
+			v.SetEnvKeyReplacer(config.Replacer)
+			v.AutomaticEnv()
 
-var rootCmd = &cobra.Command{
-	Use:   "akash-proxy",
-	Short: "Akash Proxy - A load balancer and proxy for Akash network nodes",
-	Long:  "Akash Proxy provides load balancing and automatic failover for Akash network RPC, gRPC and REST nodes.",
-	PreRun: func(cmd *cobra.Command, args []string) {
-		err := initConfig(cmd)
-		if err != nil {
-			panic(err)
-		}
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		runProxy()
-	},
-}
+			configPath := cmd.Flags().Lookup("config").Value.String()
+			if configPath != "" {
+				v.SetConfigFile(configPath)
+			} else {
+				v.SetConfigName("config")
+				v.SetConfigType("yaml")
+				v.AddConfigPath(".")
+				v.AddConfigPath(filepath.Join("$HOME", ".akash-proxy"))
+			}
 
-func init() {
+			// If a config file is found, read it in.
+			if err := v.ReadInConfig(); err != nil {
+				var configFileNotFoundError viper.ConfigFileNotFoundError
+				if !errors.As(err, &configFileNotFoundError) {
+					return fmt.Errorf("reading configuration: %w", err)
+				}
+			}
+
+			if err := v.BindPFlags(cmd.PersistentFlags()); err != nil {
+				return fmt.Errorf("binding flags %w", err)
+			}
+
+			return nil
+		},
+		Run: func(cmd *cobra.Command, args []string) {
+			cfg := config.Must(v)
+			runProxy(cfg)
+		},
+	}
 
 	// Server configuration
 	rootCmd.PersistentFlags().String("server.listen", ":25567", "Address to listen on for HTTP REST & RPC requests")
@@ -84,40 +105,11 @@ func init() {
 
 	// Configuration file support
 	rootCmd.PersistentFlags().StringP("config", "c", "", "config file (default is $HOME/.akash-proxy/config.yaml)")
+
+	return rootCmd
 }
 
-func initConfig(cmd *cobra.Command) error {
-	V.SetEnvPrefix("AKASH_PROXY")
-	V.SetEnvKeyReplacer(config.Replacer)
-	V.AutomaticEnv()
-
-	configPath := cmd.Flags().Lookup("config").Value.String()
-	if configPath != "" {
-		V.SetConfigFile(configPath)
-	} else {
-		V.SetConfigName("config")
-		V.SetConfigType("yaml")
-		V.AddConfigPath(".")
-		V.AddConfigPath(filepath.Join("$HOME", ".akash-proxy"))
-	}
-
-	// If a config file is found, read it in.
-	if err := V.ReadInConfig(); err != nil {
-		var configFileNotFoundError viper.ConfigFileNotFoundError
-		if !errors.As(err, &configFileNotFoundError) {
-			return fmt.Errorf("reading configuration: %w", err)
-		}
-	}
-
-	if err := V.BindPFlags(cmd.PersistentFlags()); err != nil {
-		return fmt.Errorf("binding flags %w", err)
-	}
-
-	return nil
-}
-
-func runProxy() {
-	cfg := config.Must(V)
+func runProxy(cfg config.Config) {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	rpcListener := make(chan seed.Seed, 1)
@@ -215,7 +207,9 @@ func runProxy() {
 }
 
 func main() {
-	if err := rootCmd.Execute(); err != nil {
+	var v = viper.New()
+
+	if err := NewRootCmd(v).Execute(); err != nil {
 		log.Fatalf("failed to execute command: %v", err)
 	}
 }

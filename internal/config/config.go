@@ -2,7 +2,6 @@ package config
 
 import (
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/spf13/viper"
@@ -63,24 +62,13 @@ type Config struct {
 	CORS   CORSConfig   `mapstructure:"cors"`
 }
 
-var (
-	// cfg is the global config instance
-	cfg Config
-	mu  sync.Mutex
-)
-
-// Load reads the configuration from environment variables and unmarshals it into the Config struct.
-func Load(v *viper.Viper) error {
-	mu.Lock()
-	defer mu.Unlock()
-
-	return v.Unmarshal(&cfg)
-}
-
 // Must returns the current configuration or panics if it cannot be loaded.
 func Must(v *viper.Viper) Config {
-	if err := Load(v); err != nil {
-		panic("could not load config: " + err.Error())
+	var cfg Config
+	err := v.Unmarshal(&cfg)
+	if err != nil {
+		return Config{}
 	}
+
 	return cfg
 }
