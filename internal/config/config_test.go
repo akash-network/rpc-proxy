@@ -90,7 +90,10 @@ func TestEnvironmentVariables(t *testing.T) {
 	v.BindEnv("cors.allow-methods")
 	v.BindEnv("cors.allow-headers")
 
-	assignedConfig := Must(v)
+	assignedConfig, err := Read(v)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
 
 	// Test all environment variable values
 	require.Equal(t, customTestConfig.Server.Listen, assignedConfig.Server.Listen)

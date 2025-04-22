@@ -67,9 +67,13 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 
 			return nil
 		},
-		Run: func(cmd *cobra.Command, args []string) {
-			cfg := config.Must(v)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Read(v)
+			if err != nil {
+				return fmt.Errorf("reading configuration: %w", err)
+			}
 			runProxy(cfg)
+			return nil
 		},
 	}
 

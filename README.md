@@ -62,7 +62,7 @@ export AKASH_PROXY_TLS_KEY=localhost-key.pem
 go run cmd/main.go
 
 # Or using a config file
-go run cmd/main.go --config=./config/local.yaml
+go run cmd/main.go --config=./testdata/local.yaml
 ```
 
 ## Building

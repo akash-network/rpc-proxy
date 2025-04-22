@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -62,12 +63,12 @@ type Config struct {
 	CORS   CORSConfig   `mapstructure:"cors"`
 }
 
-// Must returns the current configuration or panics if it cannot be loaded.
-func Must(v *viper.Viper) Config {
+// Read returns the configuration from viper.Viper. Returns error if unable to unmarshal.
+func Read(v *viper.Viper) (Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
-		return Config{}
+		return Config{}, fmt.Errorf("unmarshalling config: %w", err)
 	}
 
-	return cfg
+	return cfg, nil
 }
