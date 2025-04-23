@@ -69,6 +69,7 @@ type Config struct {
 	Health  HealthConfig  `mapstructure:"health"`
 	CORS    CORSConfig    `mapstructure:"cors"`
 	Metrics MetricsConfig `mapstructure:"metrics"`
+}
 
 // Read returns the configuration from viper.Viper. Returns error if unable to unmarshal.
 func Read(v *viper.Viper) (Config, error) {
