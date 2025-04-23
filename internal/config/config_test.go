@@ -66,13 +66,13 @@ func TestEnvironmentVariables(t *testing.T) {
 	os.Setenv("AKASH_PROXY_SEED_REFRESH_INTERVAL", customTestConfig.Seed.RefreshInterval.String())
 	os.Setenv("AKASH_PROXY_SEED_CHAIN_ID", customTestConfig.Seed.ChainID)
 	os.Setenv("AKASH_PROXY_SEED_ENABLE_REMOTE", "true")
+
 	os.Setenv("AKASH_PROXY_HEALTH_HEALTHY_THRESHOLD", customTestConfig.Health.HealthyThreshold.String())
 	os.Setenv("AKASH_PROXY_HEALTH_PROXY_REQUEST_TIMEOUT", customTestConfig.Health.ProxyRequestTimeout.String())
 	os.Setenv("AKASH_PROXY_CORS_ALLOW_ORIGIN", customTestConfig.CORS.AllowOrigin)
 	os.Setenv("AKASH_PROXY_CORS_ALLOW_METHODS", customTestConfig.CORS.AllowMethods)
 	os.Setenv("AKASH_PROXY_CORS_ALLOW_HEADERS", customTestConfig.CORS.AllowHeaders)
 
-	// Metrics configuration
 	os.Setenv("AKASH_PROXY_METRICS_ENABLED", "true")
 	os.Setenv("AKASH_PROXY_METRICS_LISTEN", ":9090")
 	os.Setenv("AKASH_PROXY_METRICS_PATH", "/metrics")
