@@ -23,13 +23,11 @@ type GRPCProxy struct {
 // configuration, logger, and a custom load balancer.
 func NewGRPCProxy(
 	ch chan seed.Seed,
-	cfg config.Config,
 	log *slog.Logger,
 	lb LoadBalancer,
 ) *GRPCProxy {
 	return &GRPCProxy{
 		Proxy: Proxy{
-			cfg: cfg,
 			ch:  ch,
 			log: log,
 			lb:  lb,
@@ -41,7 +39,6 @@ func NewGRPCProxy(
 // It satisfies the http.Handler interface, allowing GRPCProxy to be used
 // directly with an HTTP server (e.g., http.ListenAndServe).
 func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
 	if p.shuttingDown.Load() {
 		p.log.Error("proxy is shutting down")
 		w.WriteHeader(http.StatusInternalServerError)

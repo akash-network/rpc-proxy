@@ -13,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
+
 	"github.com/akash-network/rpc-proxy/internal/metrics"
 	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 
@@ -21,7 +23,7 @@ import (
 )
 
 type Proxy struct {
-	cfg  config.Config
+	cfg  config.HealthConfig
 	log  *slog.Logger
 	init sync.Once
 	ch   chan seed.Seed
@@ -75,7 +77,6 @@ func (p *Proxy) doUpdate(providers []seed.Node) error {
 			srv, err := newServer(
 				provider.Provider,
 				target,
-				p.cfg,
 				p.log.With("server_address", provider.Address),
 				provider,
 			)

@@ -1,9 +1,6 @@
 package proxy
 
 import (
-	"github.com/akash-network/rpc-proxy/internal/avg"
-	"github.com/akash-network/rpc-proxy/internal/config"
-	"github.com/akash-network/rpc-proxy/internal/seed"
 	"log/slog"
 	"math"
 	"math/rand"
@@ -12,12 +9,14 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/akash-network/rpc-proxy/internal/avg"
+	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
 func TestRoundRobin_Next(t *testing.T) {
 	servers := []*Server{
 		{
-			cfg:          config.Config{},
 			name:         "a",
 			Url:          nil,
 			pings:        avg.Moving(1),
@@ -35,7 +34,6 @@ func TestRoundRobin_Next(t *testing.T) {
 			},
 		},
 		{
-			cfg:          config.Config{},
 			name:         "b",
 			Url:          nil,
 			pings:        avg.Moving(1),
@@ -81,7 +79,6 @@ func TestRoundRobin_Next(t *testing.T) {
 func TestLatencyBased_Next(t *testing.T) {
 	servers := []*Server{
 		{
-			cfg:          config.Config{},
 			name:         "a",
 			Url:          nil,
 			pings:        avg.Moving(1),
@@ -99,7 +96,6 @@ func TestLatencyBased_Next(t *testing.T) {
 			},
 		},
 		{
-			cfg:          config.Config{},
 			name:         "b",
 			Url:          nil,
 			pings:        avg.Moving(1),
