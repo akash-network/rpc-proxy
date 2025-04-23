@@ -4,14 +4,20 @@ import (
 	"context"
 	_ "embed"
 	"errors"
-	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
+	"fmt"
 	"html/template"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/spf13/viper"
+
+	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -20,15 +26,94 @@ import (
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/proxy"
 	"github.com/akash-network/rpc-proxy/internal/seed"
+	"github.com/spf13/cobra"
 	"golang.org/x/crypto/acme/autocert"
 )
 
 //go:embed index.html
 var index []byte
 
-func main() {
-	cfg := config.Must()
-	// TODO: Logging configurations through context propagation??
+func NewRootCmd(v *viper.Viper) *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use:   "akash-proxy",
+		Short: "Akash Proxy - A load balancer and proxy for Akash network nodes",
+		Long:  "Akash Proxy provides load balancing and automatic failover for Akash network RPC, gRPC and REST nodes.",
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			v.SetEnvPrefix("AKASH_PROXY")
+			v.SetEnvKeyReplacer(config.Replacer)
+			v.AutomaticEnv()
+
+			configPath := cmd.Flags().Lookup("config").Value.String()
+			if configPath != "" {
+				v.SetConfigFile(configPath)
+			} else {
+				v.SetConfigName("config")
+				v.SetConfigType("yaml")
+				v.AddConfigPath(".")
+				v.AddConfigPath(filepath.Join("$HOME", ".akash-proxy"))
+			}
+
+			// If a config file is found, read it in.
+			if err := v.ReadInConfig(); err != nil {
+				var configFileNotFoundError viper.ConfigFileNotFoundError
+				if !errors.As(err, &configFileNotFoundError) {
+					return fmt.Errorf("reading configuration: %w", err)
+				}
+			}
+
+			if err := v.BindPFlags(cmd.PersistentFlags()); err != nil {
+				return fmt.Errorf("binding flags %w", err)
+			}
+
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Read(v)
+			if err != nil {
+				return fmt.Errorf("reading configuration: %w", err)
+			}
+			runProxy(cfg)
+			return nil
+		},
+	}
+
+	// Server configuration
+	rootCmd.PersistentFlags().String("server.listen", ":25567", "Address to listen on for HTTP REST & RPC requests")
+	rootCmd.PersistentFlags().String("server.listen-grpc", ":9090", "Address to listen on for gRPC requests")
+	rootCmd.PersistentFlags().Duration("server.timeouts.read", 10*time.Second, "Server read timeout")
+	rootCmd.PersistentFlags().Duration("server.timeouts.write", 10*time.Second, "Server write timeout")
+	rootCmd.PersistentFlags().Duration("server.timeouts.idle", 10*time.Second, "Server idle timeout")
+
+	// TLS configuration
+	rootCmd.PersistentFlags().String("tls.autocert.email", "", "Email for Let's Encrypt certificates")
+	rootCmd.PersistentFlags().StringSlice("tls.autocert.hosts", []string{}, "Comma-separated list of domains for Let's Encrypt")
+	rootCmd.PersistentFlags().String("tls.cert", "", "Path to TLS certificate file")
+	rootCmd.PersistentFlags().String("tls.key", "", "Path to TLS private key file")
+
+	// Seed configuration
+	rootCmd.PersistentFlags().String("seed.url", "https://raw.githubusercontent.com/cosmos/chain-registry/master/akash/chain.json", "URL to fetch initial node list")
+	rootCmd.PersistentFlags().Duration("seed.refresh-interval", 5*time.Minute, "How often to refresh node list")
+	rootCmd.PersistentFlags().String("seed.chain-id", "akashnet-2", "Expected chain ID")
+	rootCmd.PersistentFlags().StringSlice("seed.additional-nodes.rpc", []string{}, "Comma-separated list of additional RPC nodes")
+	rootCmd.PersistentFlags().StringSlice("seed.additional-nodes.rest", []string{}, "Comma-separated list of additional REST nodes")
+	rootCmd.PersistentFlags().StringSlice("seed.additional-nodes.grpc", []string{}, "Comma-separated list of additional gRPC nodes")
+
+	// Health configuration
+	rootCmd.PersistentFlags().Duration("health.healthy-threshold", 10*time.Second, "Response time threshold for healthy nodes")
+	rootCmd.PersistentFlags().Duration("health.proxy-request-timeout", 15*time.Second, "Timeout for proxied requests")
+
+	// CORS configuration
+	rootCmd.PersistentFlags().String("cors.allow-origin", "*", "CORS allowed origin")
+	rootCmd.PersistentFlags().String("cors.allow-methods", "GET, POST, PUT, DELETE, OPTIONS", "CORS allowed methods")
+	rootCmd.PersistentFlags().String("cors.allow-headers", "Content-Type, Authorization", "CORS allowed headers")
+
+	// Configuration file support
+	rootCmd.PersistentFlags().StringP("config", "c", "", "config file (default is $HOME/.akash-proxy/config.yaml)")
+
+	return rootCmd
+}
+
+func runProxy(cfg config.Config) {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	rpcListener := make(chan seed.Seed, 1)
@@ -36,14 +121,23 @@ func main() {
 	grpcListener := make(chan seed.Seed, 1)
 
 	seederCfg := seed.Config{
-		SeedURL:             cfg.SeedURL,
-		SeedRefreshInterval: cfg.SeedRefreshInterval,
-		ChainID:             cfg.ChainID,
+		SeedURL:             cfg.Seed.URL,
+		SeedRefreshInterval: cfg.Seed.RefreshInterval,
+		ChainID:             cfg.Seed.ChainID,
+		AdditionalNodes: struct {
+			RPC  []string
+			REST []string
+			GRPC []string
+		}{
+			RPC:  cfg.Seed.AdditionalNodes.RPC,
+			REST: cfg.Seed.AdditionalNodes.REST,
+			GRPC: cfg.Seed.AdditionalNodes.GRPC,
+		},
 	}
 	seeder := seed.New(seederCfg, log, rpcListener, restListener, grpcListener)
-	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg, log, proxy.NewLatencyBased(log))
-	restProxyHandler := proxy.NewRestProxy(restListener, cfg, log, proxy.NewLatencyBased(log))
-	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, cfg, log, proxy.NewLatencyBased(log))
+	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewLatencyBased(log))
+	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewLatencyBased(log))
+	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewLatencyBased(log))
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
@@ -79,8 +173,8 @@ func main() {
 	proxyGroup.Go(func() error {
 		log.Info("starting server", "addr", srv.Addr)
 		var err error
-		if cfg.Listen == ":https" {
-			err = srv.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)
+		if cfg.Server.Listen == ":https" {
+			err = srv.ListenAndServeTLS(cfg.TLS.Cert, cfg.TLS.Key)
 		} else {
 			err = srv.ListenAndServe()
 		}
@@ -98,7 +192,7 @@ func main() {
 
 	proxyGroup.Go(func() error {
 		log.Info("starting grpc proxy", "addr", grpcServer.Addr)
-		err := grpcServer.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)
+		err := grpcServer.ListenAndServeTLS(cfg.TLS.Cert, cfg.TLS.Key)
 		if err != nil {
 			if errors.Is(err, http.ErrServerClosed) {
 				log.Info("server shut down")
@@ -116,15 +210,23 @@ func main() {
 	}
 }
 
+func main() {
+	var v = viper.New()
+
+	if err := NewRootCmd(v).Execute(); err != nil {
+		log.Fatalf("failed to execute command: %v", err)
+	}
+}
+
 func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandler *proxy.RPCProxy, restProxyHandler *proxy.RestProxy) *http.Server {
 	am := autocert.Manager{
 		Cache:  autocert.DirCache("."),
 		Prompt: autocert.AcceptTOS,
 	}
-	if addr := cfg.AutocertEmail; addr != "" {
+	if addr := cfg.TLS.Autocert.Email; addr != "" {
 		am.Email = addr
 	}
-	if hosts := cfg.AutocertHosts; len(hosts) > 0 {
+	if hosts := cfg.TLS.Autocert.Hosts; len(hosts) > 0 {
 		am.HostPolicy = autocert.HostWhitelist(hosts...)
 	}
 
@@ -154,23 +256,22 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 		}
 	}))
 
-	// TODO: make this part of the configuration in configuration PR.
 	corsHeaders := map[string]string{
-		cors.AccessControlAllowOrigin:  "*",
-		cors.AccessControlAllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
-		cors.AccessControlAllowHeaders: "Content-Type, Authorization",
+		cors.AccessControlAllowOrigin:  cfg.CORS.AllowOrigin,
+		cors.AccessControlAllowMethods: cfg.CORS.AllowMethods,
+		cors.AccessControlAllowHeaders: cfg.CORS.AllowHeaders,
 	}
 
 	srv := &http.Server{
-		Addr:         cfg.Listen,
+		Addr:         cfg.Server.Listen,
 		Handler:      cors.WithCorsMiddleware(corsHeaders, m),
 		TLSConfig:    am.TLSConfig(),
-		ReadTimeout:  time.Second * 10,
-		IdleTimeout:  time.Second * 10,
-		WriteTimeout: time.Second * 10,
+		ReadTimeout:  cfg.Server.Timeouts.Read,
+		IdleTimeout:  cfg.Server.Timeouts.Idle,
+		WriteTimeout: cfg.Server.Timeouts.Write,
 	}
 
-	if cfg.TLSCert != "" && cfg.TLSKey != "" {
+	if cfg.TLS.Cert != "" && cfg.TLS.Key != "" {
 		srv.TLSConfig = nil
 	}
 
@@ -178,11 +279,10 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 }
 
 func prepareGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.GRPCProxy) *http.Server {
-	// TODO: make this part of the configuration in configuration PR.
 	corsHeaders := map[string]string{
-		cors.AccessControlAllowOrigin:  "*",
-		cors.AccessControlAllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
-		cors.AccessControlAllowHeaders: "Content-Type, Authorization",
+		cors.AccessControlAllowOrigin:  cfg.CORS.AllowOrigin,
+		cors.AccessControlAllowMethods: cfg.CORS.AllowMethods,
+		cors.AccessControlAllowHeaders: cfg.CORS.AllowHeaders,
 	}
 
 	mux := http.NewServeMux()
@@ -190,10 +290,10 @@ func prepareGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.GRPCProxy) 
 
 	// Start HTTP/2.0 server.
 	grpcServer := &http.Server{
-		Addr:         cfg.ListenGRPC,
-		ReadTimeout:  time.Second * 10,
-		IdleTimeout:  time.Second * 10,
-		WriteTimeout: time.Second * 10,
+		Addr:         cfg.Server.ListenGRPC,
+		ReadTimeout:  cfg.Server.Timeouts.Read,
+		IdleTimeout:  cfg.Server.Timeouts.Idle,
+		WriteTimeout: cfg.Server.Timeouts.Write,
 		Handler:      h2c.NewHandler(mux, &http2.Server{}),
 	}
 

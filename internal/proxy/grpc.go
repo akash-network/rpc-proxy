@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 
-	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
@@ -21,13 +20,11 @@ type GRPCProxy struct {
 // configuration, logger, and a custom load balancer.
 func NewGRPCProxy(
 	ch chan seed.Seed,
-	cfg config.Config,
 	log *slog.Logger,
 	lb LoadBalancer,
 ) *GRPCProxy {
 	return &GRPCProxy{
 		Proxy: Proxy{
-			cfg: cfg,
 			ch:  ch,
 			log: log,
 			lb:  lb,

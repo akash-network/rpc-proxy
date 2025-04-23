@@ -8,18 +8,16 @@ import (
 	"github.com/akash-network/rpc-proxy/internal/seed"
 
 	"github.com/akash-network/rpc-proxy/internal/avg"
-	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/ttlslice"
 )
 
 // TODO: Replace these stats with prometheus metrics server.
 
-func newServer(name string, target *url.URL, cfg config.Config, log *slog.Logger, node seed.Node) (*Server, error) {
+func newServer(name string, target *url.URL, log *slog.Logger, node seed.Node) (*Server, error) {
 	return &Server{
 		name:      name,
 		Url:       target,
 		pings:     avg.Moving(50),
-		cfg:       cfg,
 		successes: ttlslice.New[int](),
 		failures:  ttlslice.New[int](),
 		log:       log,
@@ -28,7 +26,6 @@ func newServer(name string, target *url.URL, cfg config.Config, log *slog.Logger
 }
 
 type Server struct {
-	cfg          config.Config
 	name         string
 	Url          *url.URL
 	pings        *avg.MovingAverage

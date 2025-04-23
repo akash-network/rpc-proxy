@@ -27,12 +27,9 @@ func TestRPCProxy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ch := make(chan seed.Seed, 1)
-	proxy := NewRPCProxy(ch, config.Config{
-		HealthyThreshold:                10 * time.Millisecond,
-		ProxyRequestTimeout:             time.Second,
-		UnhealthyServerRecoverChancePct: 1,
-		HealthyErrorRateThreshold:       10,
-		HealthyErrorRateBucketTimeout:   time.Second * 10,
+	proxy := NewRPCProxy(ch, config.HealthConfig{
+		HealthyThreshold:    10 * time.Millisecond,
+		ProxyRequestTimeout: time.Second,
 	}, logger, NewRoundRobin(logger))
 
 	proxy.Start(ctx)
@@ -63,12 +60,9 @@ func TestRestProxy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ch := make(chan seed.Seed, 1)
-	proxy := NewRestProxy(ch, config.Config{
-		HealthyThreshold:                10 * time.Millisecond,
-		ProxyRequestTimeout:             time.Second,
-		UnhealthyServerRecoverChancePct: 1,
-		HealthyErrorRateThreshold:       10,
-		HealthyErrorRateBucketTimeout:   time.Second * 10,
+	proxy := NewRestProxy(ch, config.HealthConfig{
+		HealthyThreshold:    10 * time.Millisecond,
+		ProxyRequestTimeout: time.Second,
 	}, logger, NewRoundRobin(logger))
 
 	proxy.Start(ctx)
@@ -300,7 +294,7 @@ func TestDoUpdate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &Proxy{
-				cfg:     config.Config{},
+				cfg:     config.HealthConfig{},
 				log:     slog.Default(),
 				servers: []*Server{},
 				lb:      &MockLoadBalancer{},

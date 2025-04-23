@@ -21,7 +21,7 @@ type RPCProxy struct {
 // seed channel, logger, and a load balancer.
 func NewRPCProxy(
 	ch chan seed.Seed,
-	cfg config.Config,
+	cfg config.HealthConfig,
 	log *slog.Logger,
 	lb LoadBalancer,
 ) *RPCProxy {
