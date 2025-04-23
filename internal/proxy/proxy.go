@@ -13,8 +13,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
-
 	"github.com/akash-network/rpc-proxy/internal/metrics"
 	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 

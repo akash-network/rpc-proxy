@@ -8,7 +8,6 @@ import (
 
 	"github.com/akash-network/rpc-proxy/internal/metrics"
 
-	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
