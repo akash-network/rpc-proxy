@@ -112,21 +112,29 @@ func (s *Seeder) fetchAndUpdate(ctx context.Context) {
 
 func (s *Seeder) fetch(ctx context.Context, log *slog.Logger, url string) (Seed, error) {
 	var seed Seed
-	resp, err := http.Get(url)
-	if err != nil {
-		return seed, fmt.Errorf("get seed: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return seed, fmt.Errorf("request failed: %s", resp.Status)
-	}
 
-	bts, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return seed, fmt.Errorf("read seed: %w", err)
-	}
-	if err := json.Unmarshal(bts, &seed); err != nil {
-		return seed, fmt.Errorf("parse seed: %w", err)
+	if s.cfg.EnableRemote {
+		resp, err := http.Get(url)
+		if err != nil {
+			return seed, fmt.Errorf("get seed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			return seed, fmt.Errorf("request failed: %s", resp.Status)
+		}
+
+		bts, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return seed, fmt.Errorf("read seed: %w", err)
+		}
+		if err := json.Unmarshal(bts, &seed); err != nil {
+			return seed, fmt.Errorf("parse seed: %w", err)
+		}
+	} else {
+		seed = Seed{
+			ChainID: s.cfg.ChainID,
+			APIs:    Apis{},
+		}
 	}
 
 	// Add manual nodes

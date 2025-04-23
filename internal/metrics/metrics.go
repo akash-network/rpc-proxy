@@ -89,9 +89,9 @@ func UpdateNodeHealth(nodeType, node string, healthy bool) {
 }
 
 // PrepareMetricsServer prepares a new HTTP server for Prometheus metrics
-func PrepareMetricsServer(addr string) *http.Server {
+func PrepareMetricsServer(addr string, path string) *http.Server {
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle(path, promhttp.Handler())
 
 	srv := &http.Server{
 		Addr:    addr,

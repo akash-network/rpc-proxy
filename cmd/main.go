@@ -95,6 +95,7 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	rootCmd.PersistentFlags().String("seed.url", "https://raw.githubusercontent.com/cosmos/chain-registry/master/akash/chain.json", "URL to fetch initial node list")
 	rootCmd.PersistentFlags().Duration("seed.refresh-interval", 5*time.Minute, "How often to refresh node list")
 	rootCmd.PersistentFlags().String("seed.chain-id", "akashnet-2", "Expected chain ID")
+	rootCmd.PersistentFlags().Bool("seed.enable-remote", true, "Enable remote seed fetching")
 	rootCmd.PersistentFlags().StringSlice("seed.additional-nodes.rpc", []string{}, "Comma-separated list of additional RPC nodes")
 	rootCmd.PersistentFlags().StringSlice("seed.additional-nodes.rest", []string{}, "Comma-separated list of additional REST nodes")
 	rootCmd.PersistentFlags().StringSlice("seed.additional-nodes.grpc", []string{}, "Comma-separated list of additional gRPC nodes")
@@ -108,6 +109,11 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	rootCmd.PersistentFlags().String("cors.allow-methods", "GET, POST, PUT, DELETE, OPTIONS", "CORS allowed methods")
 	rootCmd.PersistentFlags().String("cors.allow-headers", "Content-Type, Authorization", "CORS allowed headers")
 
+	// Metrics configuration
+	rootCmd.PersistentFlags().Bool("metrics.enabled", true, "Enable metrics server")
+	rootCmd.PersistentFlags().String("metrics.listen", ":4000", "Address to listen on for metrics")
+	rootCmd.PersistentFlags().String("metrics.path", "/metrics", "Path to expose metrics on")
+
 	// Configuration file support
 	rootCmd.PersistentFlags().StringP("config", "c", "", "config file (default is $HOME/.akash-proxy/config.yaml)")
 
@@ -117,14 +123,16 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 func runProxy(cfg config.Config) {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	// Initialize metrics
-	metricsServer := metrics.PrepareMetricsServer(":4000")
-	go func() {
-		log.Info("metrics server", "addr", metricsServer.Addr)
-		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			panic(err)
-		}
-	}()
+	var metricsServer *http.Server
+	if cfg.Metrics.Enabled {
+		metricsServer = metrics.PrepareMetricsServer(cfg.Metrics.Listen, cfg.Metrics.Path)
+		go func() {
+			log.Info("metrics server", "addr", metricsServer.Addr, "path", cfg.Metrics.Path)
+			if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				panic(err)
+			}
+		}()
+	}
 
 	rpcListener := make(chan seed.Seed, 1)
 	restListener := make(chan seed.Seed, 1)
@@ -134,6 +142,7 @@ func runProxy(cfg config.Config) {
 		SeedURL:             cfg.Seed.URL,
 		SeedRefreshInterval: cfg.Seed.RefreshInterval,
 		ChainID:             cfg.Seed.ChainID,
+		EnableRemote:        cfg.Seed.EnableRemote,
 		AdditionalNodes: struct {
 			RPC  []string
 			REST []string
@@ -179,9 +188,11 @@ func runProxy(cfg config.Config) {
 			os.Exit(1)
 		}
 
-		if err := metricsServer.Shutdown(ctx); err != nil {
-			log.Error("could not close metrics server", "err", err)
-			os.Exit(1)
+		if cfg.Metrics.Enabled && metricsServer != nil {
+			if err := metricsServer.Shutdown(ctx); err != nil {
+				log.Error("could not close metrics server", "err", err)
+				os.Exit(1)
+			}
 		}
 	}()
 

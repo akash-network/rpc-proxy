@@ -37,6 +37,7 @@ type SeedConfig struct {
 	URL             string        `mapstructure:"url"`
 	RefreshInterval time.Duration `mapstructure:"refresh-interval"`
 	ChainID         string        `mapstructure:"chain-id"`
+	EnableRemote    bool          `mapstructure:"enable-remote"`
 	AdditionalNodes struct {
 		RPC  []string `mapstructure:"rpc"`
 		REST []string `mapstructure:"rest"`
@@ -55,12 +56,19 @@ type CORSConfig struct {
 	AllowHeaders string `mapstructure:"allow-headers"`
 }
 
+type MetricsConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Listen  string `mapstructure:"listen"`
+	Path    string `mapstructure:"path"`
+}
+
 type Config struct {
-	Server ServerConfig `mapstructure:"server"`
-	TLS    TLSConfig    `mapstructure:"tls"`
-	Seed   SeedConfig   `mapstructure:"seed"`
-	Health HealthConfig `mapstructure:"health"`
-	CORS   CORSConfig   `mapstructure:"cors"`
+	Server  ServerConfig  `mapstructure:"server"`
+	TLS     TLSConfig     `mapstructure:"tls"`
+	Seed    SeedConfig    `mapstructure:"seed"`
+	Health  HealthConfig  `mapstructure:"health"`
+	CORS    CORSConfig    `mapstructure:"cors"`
+	Metrics MetricsConfig `mapstructure:"metrics"`
 }
 
 // Read returns the configuration from viper.Viper. Returns error if unable to unmarshal.
