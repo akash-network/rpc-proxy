@@ -65,8 +65,12 @@ go run cmd/main.go
 go run cmd/main.go --config=./testdata/local.yaml
 ```
 
-## Building
+## Monitoring
 
+### Deploying locally
+You can deploy the monitoring stack locally by running docker compose.
 ```bash
-go build -o akash-rpc-proxy
+docker-compose -f deploy/docker-compose.yml up -d
 ```
+This will start a Grafana and Prometheus instance with datasources pre-configured as well as the dashboards provisioned.
+Access it on [http://localhost:3000](http://localhost:3000) with the default user and password `admin`.
