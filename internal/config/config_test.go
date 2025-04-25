@@ -102,6 +102,9 @@ func TestEnvironmentVariables(t *testing.T) {
 	v.BindEnv("cors.allow-origin")
 	v.BindEnv("cors.allow-methods")
 	v.BindEnv("cors.allow-headers")
+	v.BindEnv("metrics.enabled")
+	v.BindEnv("metrics.listen")
+	v.BindEnv("metrics.path")
 
 	assignedConfig, err := Read(v)
 	if err != nil {

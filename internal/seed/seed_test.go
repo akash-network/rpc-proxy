@@ -54,6 +54,7 @@ func TestUpdater(t *testing.T) {
 	grpc := make(chan Seed, 1)
 
 	seeder := New(Config{
+		EnableRemote:        true,
 		SeedRefreshInterval: time.Millisecond,
 		SeedURL:             srv.URL,
 		ChainID:             chainID,
