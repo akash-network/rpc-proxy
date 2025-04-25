@@ -80,7 +80,7 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 
 	// Server configuration
 	rootCmd.PersistentFlags().String("server.listen", ":25567", "Address to listen on for HTTP REST & RPC requests")
-	rootCmd.PersistentFlags().String("server.listen-grpc", ":9090", "Address to listen on for gRPC requests")
+	rootCmd.PersistentFlags().String("server.listen-grpc", ":25568", "Address to listen on for gRPC requests")
 	rootCmd.PersistentFlags().Duration("server.timeouts.read", 10*time.Second, "Server read timeout")
 	rootCmd.PersistentFlags().Duration("server.timeouts.write", 10*time.Second, "Server write timeout")
 	rootCmd.PersistentFlags().Duration("server.timeouts.idle", 10*time.Second, "Server idle timeout")
