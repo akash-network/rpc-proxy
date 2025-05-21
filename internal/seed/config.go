@@ -13,6 +13,9 @@ type Config struct {
 	// ChainID is the ID of the chain.
 	ChainID string
 
+	// EnableRemote enables/disables remote seed fetching
+	EnableRemote bool
+
 	// AdditionalNodes contains additional configured nodes
 	AdditionalNodes struct {
 		RPC  []string

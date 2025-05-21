@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 
+	"github.com/akash-network/rpc-proxy/internal/metrics"
+
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
@@ -69,6 +71,7 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.log.Info("serving request", "target", srv.Url, "source", r.URL)
 
 		proxy.ServeHTTP(w, r)
+		metrics.IncrementRequestCount("grpc", srv.Url.Host)
 		return
 	}
 
@@ -90,4 +93,9 @@ func (p *GRPCProxy) update(seed seed.Seed) {
 		p.log.Error("could not update seed", "err", err)
 	}
 	p.log.Info("updated server list for gRPC", "total", len(p.servers))
+	metrics.UpdateNodeCount("grpc", float64(len(p.servers)))
+
+	for _, node := range seed.APIs.GRPC { // Update health status for each gRPC node
+		metrics.UpdateNodeHealth("grpc", node.Address, node.Healthy())
+	}
 }

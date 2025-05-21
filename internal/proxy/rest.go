@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
+	"github.com/akash-network/rpc-proxy/internal/metrics"
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
@@ -49,6 +50,7 @@ func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if srv := p.lb.Next(); srv != nil {
 		proxy := newReverseProxy(srv, p.log)
 		proxy.ServeHTTP(w, r)
+		metrics.IncrementRequestCount("rest", srv.Url.Host)
 		return
 	}
 
@@ -70,4 +72,9 @@ func (p *RestProxy) update(seed seed.Seed) {
 		p.log.Error("could not update seed", "err", err)
 	}
 	p.log.Info("updated server list for REST", "total", len(p.servers))
+	metrics.UpdateNodeCount("rest", float64(len(p.servers)))
+
+	for _, node := range seed.APIs.Rest { // Update health status for each REST node
+		metrics.UpdateNodeHealth("rest", node.Address, node.Healthy())
+	}
 }

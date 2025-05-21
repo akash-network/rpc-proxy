@@ -33,6 +33,7 @@ var customTestConfig = Config{
 		URL:             "https://custom-seed-url.com",
 		RefreshInterval: 10 * time.Minute,
 		ChainID:         "custom-chain",
+		EnableRemote:    true,
 	},
 	Health: HealthConfig{
 		HealthyThreshold:    20 * time.Second,
@@ -42,6 +43,11 @@ var customTestConfig = Config{
 		AllowOrigin:  "https://example.com",
 		AllowMethods: "GET,POST",
 		AllowHeaders: "Content-Type",
+	},
+	Metrics: MetricsConfig{
+		Enabled: true,
+		Listen:  ":9090",
+		Path:    "/metrics",
 	},
 }
 
@@ -59,11 +65,18 @@ func TestEnvironmentVariables(t *testing.T) {
 	os.Setenv("AKASH_PROXY_SEED_URL", customTestConfig.Seed.URL)
 	os.Setenv("AKASH_PROXY_SEED_REFRESH_INTERVAL", customTestConfig.Seed.RefreshInterval.String())
 	os.Setenv("AKASH_PROXY_SEED_CHAIN_ID", customTestConfig.Seed.ChainID)
+	os.Setenv("AKASH_PROXY_SEED_ENABLE_REMOTE", "true")
+
 	os.Setenv("AKASH_PROXY_HEALTH_HEALTHY_THRESHOLD", customTestConfig.Health.HealthyThreshold.String())
 	os.Setenv("AKASH_PROXY_HEALTH_PROXY_REQUEST_TIMEOUT", customTestConfig.Health.ProxyRequestTimeout.String())
 	os.Setenv("AKASH_PROXY_CORS_ALLOW_ORIGIN", customTestConfig.CORS.AllowOrigin)
 	os.Setenv("AKASH_PROXY_CORS_ALLOW_METHODS", customTestConfig.CORS.AllowMethods)
 	os.Setenv("AKASH_PROXY_CORS_ALLOW_HEADERS", customTestConfig.CORS.AllowHeaders)
+
+	os.Setenv("AKASH_PROXY_METRICS_ENABLED", "true")
+	os.Setenv("AKASH_PROXY_METRICS_LISTEN", ":9090")
+	os.Setenv("AKASH_PROXY_METRICS_PATH", "/metrics")
+
 	defer clearAllEnvVars()
 
 	v := viper.New()
@@ -89,6 +102,9 @@ func TestEnvironmentVariables(t *testing.T) {
 	v.BindEnv("cors.allow-origin")
 	v.BindEnv("cors.allow-methods")
 	v.BindEnv("cors.allow-headers")
+	v.BindEnv("metrics.enabled")
+	v.BindEnv("metrics.listen")
+	v.BindEnv("metrics.path")
 
 	assignedConfig, err := Read(v)
 	if err != nil {
@@ -113,6 +129,9 @@ func TestEnvironmentVariables(t *testing.T) {
 	require.Equal(t, customTestConfig.CORS.AllowOrigin, assignedConfig.CORS.AllowOrigin)
 	require.Equal(t, customTestConfig.CORS.AllowMethods, assignedConfig.CORS.AllowMethods)
 	require.Equal(t, customTestConfig.CORS.AllowHeaders, assignedConfig.CORS.AllowHeaders)
+	require.Equal(t, customTestConfig.Metrics.Enabled, assignedConfig.Metrics.Enabled)
+	require.Equal(t, customTestConfig.Metrics.Listen, assignedConfig.Metrics.Listen)
+	require.Equal(t, customTestConfig.Metrics.Path, assignedConfig.Metrics.Path)
 }
 
 func clearAllEnvVars() {
@@ -129,11 +148,15 @@ func clearAllEnvVars() {
 		"AKASH_PROXY_SEED_URL",
 		"AKASH_PROXY_SEED_REFRESH_INTERVAL",
 		"AKASH_PROXY_SEED_CHAIN_ID",
+		"AKASH_PROXY_SEED_ENABLE_REMOTE",
 		"AKASH_PROXY_HEALTH_HEALTHY_THRESHOLD",
 		"AKASH_PROXY_HEALTH_PROXY_REQUEST_TIMEOUT",
 		"AKASH_PROXY_CORS_ALLOW_ORIGIN",
 		"AKASH_PROXY_CORS_ALLOW_METHODS",
 		"AKASH_PROXY_CORS_ALLOW_HEADERS",
+		"AKASH_PROXY_METRICS_ENABLED",
+		"AKASH_PROXY_METRICS_LISTEN",
+		"AKASH_PROXY_METRICS_PATH",
 	}
 
 	for _, envVar := range envVars {

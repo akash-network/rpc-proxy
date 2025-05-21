@@ -14,6 +14,7 @@ tls:
   key: "./localhost-key.pem"
 
 seed:
+  enable-remote: true
   url: "https://raw.githubusercontent.com/cosmos/chain-registry/master/akash/chain.json"
   refresh_interval: "5m"
   chain-id: "akashnet-2"
@@ -30,3 +31,8 @@ cors:
   allow-origin: "*"
   allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
   allow-headers: "Content-Type, Authorization"
+
+metrics:
+  enabled: true
+  listen: ":4000"
+  path: "/metrics"
