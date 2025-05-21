@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-const FallbackNodeProvider = "Unknown"
-
 type Seed struct {
 	Status  string `json:"status"`
 	ChainID string `json:"chain_id"`
@@ -141,21 +139,21 @@ func (s *Seeder) fetch(ctx context.Context, log *slog.Logger, url string) (Seed,
 	for _, addr := range s.cfg.AdditionalNodes.RPC {
 		seed.APIs.RPC = append(seed.APIs.RPC, Node{
 			Address:  addr,
-			Provider: FallbackNodeProvider,
+			Provider: addr,
 		})
 	}
 
 	for _, addr := range s.cfg.AdditionalNodes.REST {
 		seed.APIs.Rest = append(seed.APIs.Rest, Node{
 			Address:  addr,
-			Provider: FallbackNodeProvider,
+			Provider: addr,
 		})
 	}
 
 	for _, addr := range s.cfg.AdditionalNodes.GRPC {
 		seed.APIs.GRPC = append(seed.APIs.GRPC, Node{
 			Address:  addr,
-			Provider: FallbackNodeProvider,
+			Provider: addr,
 		})
 	}
 
