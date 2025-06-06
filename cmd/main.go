@@ -81,6 +81,7 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	// Server configuration
 	rootCmd.PersistentFlags().String("server.listen", ":25567", "Address to listen on for HTTP REST & RPC requests")
 	rootCmd.PersistentFlags().String("server.listen-grpc", ":25568", "Address to listen on for gRPC requests")
+	rootCmd.PersistentFlags().Bool("server.grpc-tls", true, "Enable TLS for gRPC server")
 	rootCmd.PersistentFlags().Duration("server.timeouts.read", 10*time.Second, "Server read timeout")
 	rootCmd.PersistentFlags().Duration("server.timeouts.write", 10*time.Second, "Server write timeout")
 	rootCmd.PersistentFlags().Duration("server.timeouts.idle", 10*time.Second, "Server idle timeout")
@@ -218,7 +219,12 @@ func runProxy(cfg config.Config) {
 
 	proxyGroup.Go(func() error {
 		log.Info("starting grpc proxy", "addr", grpcServer.Addr)
-		err := grpcServer.ListenAndServeTLS(cfg.TLS.Cert, cfg.TLS.Key)
+		var err error
+		if cfg.Server.GRPCTLS {
+			err = grpcServer.ListenAndServeTLS(cfg.TLS.Cert, cfg.TLS.Key)
+		} else {
+			err = grpcServer.ListenAndServe()
+		}
 		if err != nil {
 			if errors.Is(err, http.ErrServerClosed) {
 				log.Info("server shut down")

@@ -13,6 +13,7 @@ var Replacer = strings.NewReplacer(".", "_", "-", "_")
 type ServerConfig struct {
 	Listen     string        `mapstructure:"listen"`
 	ListenGRPC string        `mapstructure:"listen-grpc"`
+	GRPCTLS    bool          `mapstructure:"grpc-tls"`
 	Timeouts   TimeoutConfig `mapstructure:"timeouts"`
 }
 
