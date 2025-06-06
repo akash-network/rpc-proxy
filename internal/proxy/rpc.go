@@ -69,7 +69,7 @@ func (p *RPCProxy) update(seed seed.Seed) {
 	p.log.Info("updating server list for RPC")
 	err := p.doUpdate(seed.APIs.RPC)
 	if err != nil {
-		p.log.Error("could not update seed", "err", err)
+		p.log.Error("could not update seed", "error", err)
 	}
 	p.log.Info("updated server list for RPC", "total", len(p.servers))
 	metrics.UpdateNodeCount("rpc", float64(len(p.servers)))

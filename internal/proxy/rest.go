@@ -69,7 +69,7 @@ func (p *RestProxy) update(seed seed.Seed) {
 	p.log.Info("updating server list for REST")
 	err := p.doUpdate(seed.APIs.Rest)
 	if err != nil {
-		p.log.Error("could not update seed", "err", err)
+		p.log.Error("could not update seed", "error", err)
 	}
 	p.log.Info("updated server list for REST", "total", len(p.servers))
 	metrics.UpdateNodeCount("rest", float64(len(p.servers)))

@@ -96,7 +96,7 @@ func (s *Seeder) fetchAndUpdate(ctx context.Context) {
 	s.log.Info("fetching seed list")
 	result, err := s.fetch(ctx, s.log, s.cfg.SeedURL)
 	if err != nil {
-		s.log.Error("could not get initial seed list", "err", err)
+		s.log.Error("could not get initial seed list", "error", err)
 		return
 	}
 	if result.ChainID != s.cfg.ChainID {

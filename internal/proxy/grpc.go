@@ -90,7 +90,7 @@ func (p *GRPCProxy) update(seed seed.Seed) {
 	p.log.Info("updating server list for gRPC")
 	err := p.doUpdate(seed.APIs.GRPC)
 	if err != nil {
-		p.log.Error("could not update seed", "err", err)
+		p.log.Error("could not update seed", "error", err)
 	}
 	p.log.Info("updated server list for gRPC", "total", len(p.servers))
 	metrics.UpdateNodeCount("grpc", float64(len(p.servers)))
