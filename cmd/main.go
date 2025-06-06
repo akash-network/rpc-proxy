@@ -200,7 +200,11 @@ func runProxy(cfg config.Config) {
 	proxyGroup.Go(func() error {
 		log.Info("starting server", "addr", srv.Addr)
 		var err error
+
 		if cfg.Server.Listen == ":https" {
+			if cfg.TLS.Cert == "" || cfg.TLS.Key == "" {
+				return fmt.Errorf("TLS certificate and key must be provided when HTTPS is enabled")
+			}
 			err = srv.ListenAndServeTLS(cfg.TLS.Cert, cfg.TLS.Key)
 		} else {
 			err = srv.ListenAndServe()
@@ -221,6 +225,9 @@ func runProxy(cfg config.Config) {
 		log.Info("starting grpc proxy", "addr", grpcServer.Addr)
 		var err error
 		if cfg.Server.GRPCTLS {
+			if cfg.TLS.Cert == "" || cfg.TLS.Key == "" {
+				return fmt.Errorf("TLS certificate and key must be provided when gRPC TLS is enabled")
+			}
 			err = grpcServer.ListenAndServeTLS(cfg.TLS.Cert, cfg.TLS.Key)
 		} else {
 			err = grpcServer.ListenAndServe()
