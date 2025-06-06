@@ -180,18 +180,18 @@ func runProxy(cfg config.Config) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
-			log.Error("could not close server", "err", err)
+			log.Error("could not close server", "error", err)
 			os.Exit(1)
 		}
 
 		if err := grpcServer.Shutdown(ctx); err != nil {
-			log.Error("could not close server", "err", err)
+			log.Error("could not close server", "error", err)
 			os.Exit(1)
 		}
 
 		if cfg.Metrics.Enabled && metricsServer != nil {
 			if err := metricsServer.Shutdown(ctx); err != nil {
-				log.Error("could not close metrics server", "err", err)
+				log.Error("could not close metrics server", "error", err)
 				os.Exit(1)
 			}
 		}
@@ -203,7 +203,9 @@ func runProxy(cfg config.Config) {
 
 		if cfg.Server.Listen == ":https" {
 			if cfg.TLS.Cert == "" || cfg.TLS.Key == "" {
-				return fmt.Errorf("TLS certificate and key must be provided when HTTPS is enabled")
+				err = fmt.Errorf("TLS certificate and key must be provided when HTTPS is enabled")
+				log.Error("could not start server", "error", err)
+				return err
 			}
 			err = srv.ListenAndServeTLS(cfg.TLS.Cert, cfg.TLS.Key)
 		} else {
@@ -214,7 +216,7 @@ func runProxy(cfg config.Config) {
 				log.Info("server shut down")
 				return nil
 			}
-			log.Error("could not start server", "err", err)
+			log.Error("could not start server", "error", err)
 			return err
 		}
 
@@ -226,7 +228,9 @@ func runProxy(cfg config.Config) {
 		var err error
 		if cfg.Server.GRPCTLS {
 			if cfg.TLS.Cert == "" || cfg.TLS.Key == "" {
-				return fmt.Errorf("TLS certificate and key must be provided when gRPC TLS is enabled")
+				err = fmt.Errorf("TLS certificate and key must be provided when gRPC TLS is enabled")
+				log.Error("could not start grpc server", "error", err)
+				return err
 			}
 			err = grpcServer.ListenAndServeTLS(cfg.TLS.Cert, cfg.TLS.Key)
 		} else {
@@ -237,7 +241,7 @@ func runProxy(cfg config.Config) {
 				log.Info("server shut down")
 				return nil
 			}
-			log.Error("could not start grpc server", "err", err)
+			log.Error("could not start grpc server", "error", err)
 			return err
 		}
 
@@ -291,7 +295,7 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 			"RPC":  rpcProxyHandler.Stats(),
 			"Rest": restProxyHandler.Stats(),
 		}); err != nil {
-			log.Error("could render stats", "err", err)
+			log.Error("could render stats", "error", err)
 		}
 	}))
 
