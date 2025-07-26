@@ -84,7 +84,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "proxy_node_count{instance=\"host.docker.internal:4000\"}",
+          "expr": "proxy_node_count",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "legendFormat": "{{type}}",
