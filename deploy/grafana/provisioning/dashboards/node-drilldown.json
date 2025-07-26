@@ -421,8 +421,12 @@
     "list": [
       {
         "current": {
-          "text": "rpc",
-          "value": "rpc"
+          "text": "",
+          "value": ""
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
         },
         "definition": "label_values(type)",
         "name": "proxy_type",
@@ -438,8 +442,12 @@
       },
       {
         "current": {
-          "text": "https://akash-mainnet-rpc.cosmonautstakes.com:443",
-          "value": "https://akash-mainnet-rpc.cosmonautstakes.com:443"
+          "text": "",
+          "value": ""
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
         },
         "definition": "label_values({type=\"$proxy_type\"},node)",
         "name": "node",
@@ -477,5 +485,5 @@
   "timezone": "browser",
   "title": "Node Drilldown",
   "uid": "dejf2gnqpl5hca",
-  "version": 1
+  "version": 5
 }
