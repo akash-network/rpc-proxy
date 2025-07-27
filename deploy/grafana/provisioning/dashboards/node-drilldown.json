@@ -428,12 +428,12 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(type)",
+        "definition": "label_values(proxy_node_count,type)",
         "name": "proxy_type",
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(type)",
+          "query": "label_values(proxy_node_count,type)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -485,5 +485,5 @@
   "timezone": "browser",
   "title": "Node Drilldown",
   "uid": "dejf2gnqpl5hca",
-  "version": 5
+  "version": 6
 }
