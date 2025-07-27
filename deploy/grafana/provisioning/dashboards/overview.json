@@ -84,7 +84,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "proxy_node_count{instance=\"host.docker.internal:4000\"}",
+          "expr": "proxy_node_count",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "legendFormat": "{{type}}",
@@ -685,6 +685,10 @@
             "rpc"
           ]
         },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
         "definition": "label_values(proxy_node_count,type)",
         "hide": 1,
         "includeAll": true,
@@ -725,5 +729,5 @@
   "timezone": "browser",
   "title": "Proxy Overview",
   "uid": "dej3l52x401kwf",
-  "version": 1
+  "version": 7
 }
