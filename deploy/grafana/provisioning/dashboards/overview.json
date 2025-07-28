@@ -84,7 +84,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "proxy_node_count",
+          "expr": "proxy_node_count{job=\"$service\"}",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "legendFormat": "{{type}}",
@@ -152,8 +152,8 @@
             "uid": "${datasource}"
           },
           "disableTextWrap": false,
-          "editorMode": "code",
-          "expr": "sum(rate(proxy_request_count[1m]))",
+          "editorMode": "builder",
+          "expr": "sum(rate(proxy_request_count{job=\"$service\"}[1m]))",
           "fullMetaSearch": false,
           "includeNullMetadata": false,
           "legendFormat": "__auto",
@@ -277,8 +277,8 @@
             "uid": "${datasource}"
           },
           "disableTextWrap": false,
-          "editorMode": "code",
-          "expr": "sum(rate(proxy_request_count[1m]))",
+          "editorMode": "builder",
+          "expr": "sum(rate(proxy_request_count{job=\"$service\"}[1m]))",
           "fullMetaSearch": false,
           "includeNullMetadata": false,
           "interval": "",
@@ -345,8 +345,8 @@
             "uid": "${datasource}"
           },
           "disableTextWrap": false,
-          "editorMode": "code",
-          "expr": "sum(proxy_request_count)",
+          "editorMode": "builder",
+          "expr": "sum(proxy_request_count{job=\"$service\"})",
           "fullMetaSearch": false,
           "includeNullMetadata": false,
           "legendFormat": "__auto",
@@ -459,8 +459,8 @@
             "uid": "${datasource}"
           },
           "disableTextWrap": false,
-          "editorMode": "code",
-          "expr": "rate(proxy_request_count{type=\"$proxy_type\"}[1m])",
+          "editorMode": "builder",
+          "expr": "rate(proxy_request_count{type=\"$proxy_type\", job=\"$service\"}[1m])",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "legendFormat": "{{node}}",
@@ -555,8 +555,8 @@
             "uid": "${datasource}"
           },
           "disableTextWrap": false,
-          "editorMode": "code",
-          "expr": "sum by (status_code) (rate(proxy_request_status_count{type=\"$proxy_type\"}[$__rate_interval]))",
+          "editorMode": "builder",
+          "expr": "sum by(status_code) (rate(proxy_request_status_count{type=\"$proxy_type\", job=\"$service\"}[$__rate_interval]))",
           "fullMetaSearch": false,
           "includeNullMetadata": false,
           "legendFormat": "{{status_code}}",
@@ -649,9 +649,9 @@
             "uid": "${datasource}"
           },
           "disableTextWrap": false,
-          "editorMode": "code",
+          "editorMode": "builder",
           "exemplar": false,
-          "expr": "proxy_node_health{type=\"$proxy_type\"}",
+          "expr": "proxy_node_health{type=\"$proxy_type\", job=\"$service\"}",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "instant": false,
@@ -689,7 +689,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(proxy_node_count,type)",
+        "definition": "label_values(proxy_node_count{job=\"$service\"},type)",
         "hide": 1,
         "includeAll": true,
         "label": "Proxy Type",
@@ -698,7 +698,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(proxy_node_count,type)",
+          "query": "label_values(proxy_node_count{job=\"$service\"},type)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -718,16 +718,39 @@
         "refresh": 1,
         "regex": "",
         "type": "datasource"
+      },
+      {
+        "current": {
+          "text": "rpc-proxy",
+          "value": "rpc-proxy"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(proxy_node_count,job)",
+        "description": "Proxy service instance",
+        "label": "Service",
+        "name": "service",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(proxy_node_count,job)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "type": "query"
       }
     ]
   },
   "time": {
-    "from": "now-30m",
+    "from": "now-15m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "Proxy Overview",
   "uid": "dej3l52x401kwf",
-  "version": 7
+  "version": 10
 }
