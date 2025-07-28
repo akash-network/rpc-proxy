@@ -449,12 +449,12 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values({type=\"$proxy_type\", job=\"$service\"},node)",
+        "definition": "label_values(proxy_request_count{type=\"$proxy_type\", job=\"$service\"},node)",
         "name": "node",
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values({type=\"$proxy_type\", job=\"$service\"},node)",
+          "query": "label_values(proxy_request_count{type=\"$proxy_type\", job=\"$service\"},node)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -508,5 +508,5 @@
   "timezone": "browser",
   "title": "Node Drilldown",
   "uid": "dejf2gnqpl5hca",
-  "version": 9
+  "version": 11
 }
