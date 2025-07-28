@@ -92,7 +92,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "proxy_node_health{type=\"$proxy_type\", node=\"$node\"}",
+          "expr": "proxy_node_health{type=\"$proxy_type\", node=\"$node\", job=\"$service\"}",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "legendFormat": "__auto",
@@ -162,7 +162,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "proxy_request_status_count{type=\"$proxy_type\", node=\"$node\"}",
+          "expr": "proxy_request_status_count{type=\"$proxy_type\", node=\"$node\", job=\"$service\"}",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "legendFormat": "{{status_code}}",
@@ -230,7 +230,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "proxy_request_count{type=\"$proxy_type\", node=\"$node\"}",
+          "expr": "proxy_request_count{type=\"$proxy_type\", node=\"$node\", job=\"$service\"}",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "legendFormat": "__auto",
@@ -330,7 +330,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "rate(proxy_request_status_count{type=\"$proxy_type\", node=\"$node\"}[$__rate_interval])",
+          "expr": "rate(proxy_request_status_count{type=\"$proxy_type\", node=\"$node\", job=\"$service\"}[$__rate_interval])",
           "fullMetaSearch": false,
           "includeNullMetadata": false,
           "legendFormat": "{{status_code}}",
@@ -400,8 +400,8 @@
             "uid": "${datasource}"
           },
           "disableTextWrap": false,
-          "editorMode": "code",
-          "expr": "proxy_request_status_count{type=\"$proxy_type\", node=\"$node\"}",
+          "editorMode": "builder",
+          "expr": "proxy_request_status_count{type=\"$proxy_type\", node=\"$node\", job=\"$service\"}",
           "fullMetaSearch": false,
           "includeNullMetadata": false,
           "legendFormat": "{{status_code}}",
@@ -428,12 +428,12 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(type)",
+        "definition": "label_values(proxy_node_count{job=\"$service\"},type)",
         "name": "proxy_type",
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(type)",
+          "query": "label_values(proxy_node_count{job=\"$service\"},type)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -449,12 +449,12 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values({type=\"$proxy_type\"},node)",
+        "definition": "label_values(proxy_request_count{type=\"$proxy_type\", job=\"$service\"},node)",
         "name": "node",
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values({type=\"$proxy_type\"},node)",
+          "query": "label_values(proxy_request_count{type=\"$proxy_type\", job=\"$service\"},node)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -474,16 +474,39 @@
         "refresh": 1,
         "regex": "",
         "type": "datasource"
+      },
+      {
+        "current": {
+          "text": "rpc-proxy",
+          "value": "rpc-proxy"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(proxy_node_count,job)",
+        "description": "Proxy service instance",
+        "label": "Service",
+        "name": "service",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(proxy_node_count,job)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "type": "query"
       }
     ]
   },
   "time": {
-    "from": "now-6h",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "Node Drilldown",
   "uid": "dejf2gnqpl5hca",
-  "version": 5
+  "version": 11
 }
