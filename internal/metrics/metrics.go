@@ -11,11 +11,10 @@ import (
 )
 
 var (
-	// Global service name for all metrics
 	serviceName  string
 	serviceMutex sync.RWMutex
 
-	// Custom registry that will hold all metrics
+	// customRegistry is the registry that will hold all metrics.
 	customRegistry *prometheus.Registry
 )
 
@@ -30,12 +29,10 @@ func (lg *labeledGatherer) Gather() ([]*dto.MetricFamily, error) {
 		return nil, err
 	}
 
-	// Get current service name
 	serviceMutex.RLock()
 	currentServiceName := serviceName
 	serviceMutex.RUnlock()
 
-	// Add service label to each metric if service name is set
 	if currentServiceName != "" {
 		for _, mf := range metrics {
 			for _, metric := range mf.Metric {
@@ -50,7 +47,6 @@ func (lg *labeledGatherer) Gather() ([]*dto.MetricFamily, error) {
 	return metrics, nil
 }
 
-// Helper function to create string pointers
 func stringPtr(s string) *string {
 	return &s
 }
@@ -80,10 +76,8 @@ var RequestStatusCount *prometheus.CounterVec
 var NodeHealth *prometheus.GaugeVec
 
 func init() {
-	// Initialize custom registry
 	customRegistry = prometheus.NewRegistry()
 
-	// Initialize metrics with their original labels (service will be added automatically)
 	NodeCounts = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "proxy_node_count",
@@ -116,36 +110,35 @@ func init() {
 		[]string{"type", "node"},
 	)
 
-	// Register metrics with custom registry
 	customRegistry.MustRegister(NodeCounts)
 	customRegistry.MustRegister(RequestCount)
 	customRegistry.MustRegister(RequestStatusCount)
 	customRegistry.MustRegister(NodeHealth)
 }
 
-// SetServiceName sets the global service name for all metrics
+// SetServiceName sets the global service name for all metrics.
 func SetServiceName(name string) {
 	serviceMutex.Lock()
 	defer serviceMutex.Unlock()
 	serviceName = name
 }
 
-// UpdateNodeCount updates the node count for a specific type
+// UpdateNodeCount updates the node count for a specific type.
 func UpdateNodeCount(nodeType string, count float64) {
 	NodeCounts.WithLabelValues(nodeType).Set(count)
 }
 
-// IncrementRequestCount increments the request count for a specific type and node
+// IncrementRequestCount increments the request count for a specific type and node.
 func IncrementRequestCount(requestType, node string) {
 	RequestCount.WithLabelValues(requestType, node).Inc()
 }
 
-// IncrementRequestStatusCount increments the request count for a specific type, node, and status code
+// IncrementRequestStatusCount increments the request count for a specific type, node, and status code.
 func IncrementRequestStatusCount(requestType, node string, statusCode int) {
 	RequestStatusCount.WithLabelValues(requestType, node, strconv.Itoa(statusCode)).Inc()
 }
 
-// UpdateNodeHealth updates the health status for a specific node
+// UpdateNodeHealth updates the health status for a specific node.
 func UpdateNodeHealth(nodeType, node string, healthy bool) {
 	value := 0.0
 	if healthy {
@@ -154,11 +147,10 @@ func UpdateNodeHealth(nodeType, node string, healthy bool) {
 	NodeHealth.WithLabelValues(nodeType, node).Set(value)
 }
 
-// PrepareMetricsServer prepares a new HTTP server for Prometheus metrics
+// PrepareMetricsServer prepares a new HTTP server for Prometheus metrics.
 func PrepareMetricsServer(addr string, path string) *http.Server {
 	mux := http.NewServeMux()
 
-	// Create handler with custom gatherer that adds service labels
 	labeledGatherer := &labeledGatherer{gatherer: customRegistry}
 	handler := promhttp.HandlerFor(labeledGatherer, promhttp.HandlerOpts{})
 
@@ -172,8 +164,8 @@ func PrepareMetricsServer(addr string, path string) *http.Server {
 	return srv
 }
 
-// RegisterMetric registers a new metric with the custom registry
-// This ensures all future metrics automatically get service labels
+// RegisterMetric registers a new metric with the custom registry.
+// This ensures all future metrics automatically get service labels.
 func RegisterMetric(metric prometheus.Collector) error {
 	return customRegistry.Register(metric)
 }
