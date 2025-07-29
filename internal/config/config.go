@@ -58,9 +58,10 @@ type CORSConfig struct {
 }
 
 type MetricsConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Listen  string `mapstructure:"listen"`
-	Path    string `mapstructure:"path"`
+	Enabled     bool   `mapstructure:"enabled"`
+	Listen      string `mapstructure:"listen"`
+	Path        string `mapstructure:"path"`
+	ServiceName string `mapstructure:"service-name"`
 }
 
 type Config struct {
