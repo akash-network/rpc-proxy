@@ -114,6 +114,7 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	rootCmd.PersistentFlags().Bool("metrics.enabled", true, "Enable metrics server")
 	rootCmd.PersistentFlags().String("metrics.listen", ":4000", "Address to listen on for metrics")
 	rootCmd.PersistentFlags().String("metrics.path", "/metrics", "Path to expose metrics on")
+	rootCmd.PersistentFlags().String("metrics.service-name", "", "Service name for metrics labeling (defaults to HOSTNAME env var)")
 
 	// Configuration file support
 	rootCmd.PersistentFlags().StringP("config", "c", "", "config file (default is $HOME/.akash-proxy/config.yaml)")
@@ -126,9 +127,18 @@ func runProxy(cfg config.Config) {
 
 	var metricsServer *http.Server
 	if cfg.Metrics.Enabled {
+		// Determine service name from flag or HOSTNAME environment variable
+		serviceName := cfg.Metrics.ServiceName
+		if serviceName == "" {
+			serviceName = os.Getenv("HOSTNAME")
+		}
+
+		// Set service name for all metrics
+		metrics.SetServiceName(serviceName)
+
 		metricsServer = metrics.PrepareMetricsServer(cfg.Metrics.Listen, cfg.Metrics.Path)
 		go func() {
-			log.Info("metrics server", "addr", metricsServer.Addr, "path", cfg.Metrics.Path)
+			log.Info("metrics server", "addr", metricsServer.Addr, "path", cfg.Metrics.Path, "service", serviceName)
 			if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				panic(err)
 			}
