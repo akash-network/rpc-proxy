@@ -48,7 +48,7 @@ func (p *RPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rpc")
 	if srv := p.lb.Next(); srv != nil {
-		proxy := newReverseProxy(srv, p.log)
+		proxy := newRedirectFollowingReverseProxy(srv, p.log, "rpc")
 		proxy.ServeHTTP(w, r)
 		metrics.IncrementRequestCount("rpc", srv.Url.String())
 		return

@@ -131,25 +131,132 @@ func (p *Proxy) Start(ctx context.Context, update Updater) {
 	})
 }
 
-// newReverseProxy creates a configured httputil.ReverseProxy with common settings.
-func newReverseProxy(srv *Server, log *slog.Logger) *httputil.ReverseProxy {
+// newRedirectFollowingReverseProxy creates a configured httputil.ReverseProxy that automatically follows 301 redirects.
+// It handles 301 redirects by following them automatically and returning the final response status and content.
+func newRedirectFollowingReverseProxy(srv *Server, log *slog.Logger, proxyType string) *httputil.ReverseProxy {
+	// Create a custom HTTP client that doesn't follow redirects automatically
+	redirectClient := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// Stop automatic redirect following
+			return http.ErrUseLastResponse
+		},
+	}
+
 	return &httputil.ReverseProxy{
 		Director: func(request *http.Request) {
 			request.URL.Scheme = srv.Url.Scheme
 			request.URL.Host = srv.Url.Host
 			request.URL.Path = srv.Url.Path + request.URL.Path
 			request.Host = srv.Url.Host
-
-			log.Info("proxying request", "method", request.Method, "target", request.URL, "source", request.URL)
 		},
+		Transport: http.DefaultTransport,
 		ModifyResponse: func(response *http.Response) error {
 			cors.DeleteCorsHeaders(response)
-			metrics.IncrementRequestStatusCount("rpc", srv.Url.String(), response.StatusCode)
+
+			metrics.IncrementRequestStatusCount(proxyType, srv.Url.String(), response.StatusCode)
+
+			// Handle redirect responses by following them and returning content with final status
+			if isRedirect(response.StatusCode) {
+
+				location := response.Header.Get("Location")
+				if location != "" {
+					redirectURL, err := response.Request.URL.Parse(location)
+					if err != nil {
+						return fmt.Errorf("failed to parse redirect location %q: %w", location, err)
+					}
+
+					log.Info("following redirect", "original_status", response.StatusCode, "location", location, "resolved_url", redirectURL.String())
+
+					// Only follow redirects for safe/idempotent methods to avoid body consumption issues
+					if !isIdempotentMethod(response.Request.Method) {
+						log.Warn("skipping redirect for non-idempotent method", "method", response.Request.Method)
+						metrics.IncrementRequestStatusCount(proxyType, srv.Url.String(), response.StatusCode)
+						return nil
+					}
+
+					redirectReq, err := http.NewRequestWithContext(response.Request.Context(), response.Request.Method, redirectURL.String(), nil)
+					if err != nil {
+						return fmt.Errorf("failed to create redirect request to %q: %w", redirectURL.String(), err)
+					}
+
+					copyHeaders(response.Request.Header, redirectReq.Header)
+
+					if response.Body != nil {
+						response.Body.Close()
+					}
+
+					redirectResp, err := redirectClient.Do(redirectReq)
+					if err != nil {
+						return fmt.Errorf("failed to follow redirect to %q: %w", redirectURL.String(), err)
+					}
+
+					response.StatusCode = redirectResp.StatusCode
+					response.Status = redirectResp.Status
+					response.Body = redirectResp.Body
+					response.ContentLength = redirectResp.ContentLength
+					response.Header = redirectResp.Header.Clone()
+
+					cors.DeleteCorsHeaders(response)
+
+					metrics.IncrementRequestStatusCount(proxyType, srv.Url.String(), response.StatusCode)
+				} else {
+					log.Warn("redirect without Location header, serving as-is", "status", response.StatusCode)
+					metrics.IncrementRequestStatusCount(proxyType, srv.Url.String(), response.StatusCode)
+				}
+			}
+
 			return nil
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
-			log.Error("proxy error", "error", err)
+			log.Error("reverse proxy error", "error", err)
 			http.Error(writer, "could not proxy request", http.StatusInternalServerError)
 		},
+	}
+}
+
+// isRedirect checks if the status code represents a redirect
+func isRedirect(statusCode int) bool {
+	switch statusCode {
+	case http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect:
+		return true
+	default:
+		return false
+	}
+}
+
+// isIdempotentMethod checks if the HTTP method is safe to replay without side effects
+func isIdempotentMethod(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	default:
+		return false
+	}
+}
+
+// copyHeaders copies headers from src to dst, excluding hop-by-hop headers
+func copyHeaders(src, dst http.Header) {
+	// Hop-by-hop headers that should not be forwarded
+	hopByHopHeaders := map[string]bool{
+		"Connection":          true,
+		"Keep-Alive":          true,
+		"Proxy-Authenticate":  true,
+		"Proxy-Authorization": true,
+		"Te":                  true,
+		"Trailer":             true,
+		"Transfer-Encoding":   true,
+		"Upgrade":             true,
+		"Proxy-Connection":    true,
+	}
+
+	for name, headers := range src {
+		if !hopByHopHeaders[name] {
+			for _, h := range headers {
+				dst.Add(name, h)
+			}
+		}
 	}
 }
