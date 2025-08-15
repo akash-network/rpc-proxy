@@ -108,6 +108,11 @@ func (rr *LatencyBased) Next() *Server {
 	rr.mu.Lock()
 	defer rr.mu.Unlock()
 
+	// Return nil if no servers are available
+	if len(rr.servers) == 0 {
+		return nil
+	}
+
 	r := rr.randomizer.Float64()
 	cumulative := 0.0
 

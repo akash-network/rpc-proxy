@@ -191,7 +191,7 @@ func TestNewReverseProxy(t *testing.T) {
 			}
 
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-			proxy := newReverseProxy(srv, logger)
+			proxy := newRedirectFollowingReverseProxy(srv, logger, "rest")
 
 			// Create test request
 			req := httptest.NewRequest("GET", tt.reqPath, nil)
@@ -210,7 +210,7 @@ func TestReverseProxy_ModifyResponse(t *testing.T) {
 	targetURL, _ := url.Parse("http://node.com")
 	srv := &Server{Url: targetURL}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	proxy := newReverseProxy(srv, logger)
+	proxy := newRedirectFollowingReverseProxy(srv, logger, "rest")
 
 	resp := &http.Response{Header: make(http.Header)}
 	resp.Header.Set("Access-Control-Allow-Origin", "*")
@@ -229,7 +229,7 @@ func TestReverseProxy_ErrorHandler(t *testing.T) {
 	targetURL, _ := url.Parse("http://node.com")
 	srv := &Server{Url: targetURL}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	proxy := newReverseProxy(srv, logger)
+	proxy := newRedirectFollowingReverseProxy(srv, logger, "rest")
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/test", nil)

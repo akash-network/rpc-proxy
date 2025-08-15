@@ -71,7 +71,7 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.log.Info("serving request", "target", srv.Url, "source", r.URL)
 
 		proxy.ServeHTTP(w, r)
-		metrics.IncrementRequestCount("grpc", srv.Url.Host)
+		metrics.IncrementRequestCount("grpc", srv.Url.String())
 		return
 	}
 
