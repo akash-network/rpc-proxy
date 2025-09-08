@@ -319,6 +319,6 @@ type MockLoadBalancer struct{}
 
 func (m *MockLoadBalancer) Update(servers []*Server) {}
 
-func (m *MockLoadBalancer) Next() *Server {
+func (m *MockLoadBalancer) Next(*http.Request) *Server {
 	return nil
 }
