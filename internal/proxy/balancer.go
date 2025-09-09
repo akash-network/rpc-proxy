@@ -198,7 +198,6 @@ func NewStickyLatencyBased(log *slog.Logger, sessionTimeout time.Duration) *Stic
 		sessionTimeout:    sessionTimeout,
 	}
 
-	// Start cleanup routine for expired sessions
 	slb.sessionCleanupTicker = time.NewTicker(5 * time.Minute)
 	go slb.cleanupExpiredSessions()
 
@@ -226,12 +225,10 @@ func (slb *StickyLatencyBased) Next(req *http.Request) *Server {
 	if sessionID != "" {
 		slb.sessionMu.RLock()
 		if server, exists := slb.sessionMap[sessionID]; exists {
-			// Check if session has timed out (cache miss scenario)
 			lastAccessed := slb.sessionTimestamps[sessionID]
 			if time.Since(lastAccessed) > slb.sessionTimeout {
 				slb.sessionMu.RUnlock()
 
-				// Session timed out, clean it up
 				slb.sessionMu.Lock()
 				delete(slb.sessionMap, sessionID)
 				delete(slb.sessionTimestamps, sessionID)
@@ -242,10 +239,8 @@ func (slb *StickyLatencyBased) Next(req *http.Request) *Server {
 					"server", server.name,
 					"last_accessed", lastAccessed)
 			} else {
-				// Session is valid (cache hit scenario)
 				slb.sessionMu.RUnlock()
 
-				// Update session timestamp
 				slb.sessionMu.Lock()
 				slb.sessionTimestamps[sessionID] = time.Now()
 				slb.sessionMu.Unlock()
@@ -256,11 +251,9 @@ func (slb *StickyLatencyBased) Next(req *http.Request) *Server {
 		}
 	}
 
-	// No existing session or unhealthy server, use embedded LatencyBased selection
 	server := slb.LatencyBased.Next(req)
 
 	if server != nil && sessionID != "" {
-		// Create new session mapping
 		slb.sessionMu.Lock()
 		slb.sessionMap[sessionID] = server
 		slb.sessionTimestamps[sessionID] = time.Now()

@@ -165,9 +165,11 @@ func runProxy(cfg config.Config) {
 		},
 	}
 	seeder := seed.New(seederCfg, log, rpcListener, restListener, grpcListener)
-	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, 6*time.Second))
-	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, 6*time.Second))
-	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log, 6*time.Second))
+
+	blockTime := 6 * time.Second
+	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime))
+	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime))
+	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log, blockTime))
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
