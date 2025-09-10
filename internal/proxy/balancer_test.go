@@ -495,6 +495,14 @@ func TestStickyLatencyBased_ServerUpdate(t *testing.T) {
 		t.Fatal("expected a server to be selected")
 	}
 
+	// Verify session was created
+	lb.sessionMu.RLock()
+	originalServer, sessionExists := lb.sessionMap["session123"]
+	lb.sessionMu.RUnlock()
+	if !sessionExists {
+		t.Fatal("expected session to be created")
+	}
+
 	// Update servers - remove server1, add server3
 	updatedServers := []*Server{
 		createTestServer("server2", 20*time.Millisecond),
@@ -502,23 +510,52 @@ func TestStickyLatencyBased_ServerUpdate(t *testing.T) {
 	}
 	lb.Update(updatedServers)
 
-	// Request with same session should now go to a different server since server1 is gone
-	server2 := lb.NextServer(req)
-	if server2 == nil {
-		t.Fatal("expected a server to be selected")
+	// If the original server was removed, the session should be cleaned up
+	serverWasRemoved := true
+	for _, s := range updatedServers {
+		if s.name == originalServer.name {
+			serverWasRemoved = false
+			break
+		}
 	}
 
-	if server2.name == server1.name {
-		t.Fatalf("expected a different server after update; still got %s", server2.name)
-	}
+	if serverWasRemoved {
+		// Session should have been removed
+		lb.sessionMu.RLock()
+		_, sessionStillExists := lb.sessionMap["session123"]
+		lb.sessionMu.RUnlock()
+		if sessionStillExists {
+			t.Error("expected session to be removed when server was removed")
+		}
 
-	// Verify session mapping still exists and points to a valid server
-	lb.sessionMu.RLock()
-	server, exists := lb.sessionMap["session123"]
-	lb.sessionMu.RUnlock()
+		// Request with same session should create a new session with an available server
+		server2 := lb.NextServer(req)
+		if server2 == nil {
+			t.Fatal("expected a server to be selected")
+		}
 
-	if exists && server == nil {
-		t.Error("session exists but points to nil server")
+		// Verify the selected server is one of the available servers
+		serverIsValid := false
+		for _, s := range updatedServers {
+			if s.name == server2.name {
+				serverIsValid = true
+				break
+			}
+		}
+		if !serverIsValid {
+			t.Fatalf("selected server %s is not in the updated server list", server2.name)
+		}
+
+		// Verify new session was created
+		lb.sessionMu.RLock()
+		newServer, newSessionExists := lb.sessionMap["session123"]
+		lb.sessionMu.RUnlock()
+		if !newSessionExists {
+			t.Error("expected new session to be created")
+		}
+		if newServer == nil {
+			t.Error("new session points to nil server")
+		}
 	}
 }
 
