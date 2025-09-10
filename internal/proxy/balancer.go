@@ -236,7 +236,6 @@ func (slb *StickyLatencyBased) NextServer(req *http.Request) *Server {
 
 				slb.log.Info("session timed out, removed",
 					"session_id", sessionID,
-					"server", server.name,
 					"last_accessed", lastAccessed)
 			} else {
 				slb.sessionMu.RUnlock()
