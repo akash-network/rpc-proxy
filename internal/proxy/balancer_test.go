@@ -508,6 +508,10 @@ func TestStickyLatencyBased_ServerUpdate(t *testing.T) {
 		t.Fatal("expected a server to be selected")
 	}
 
+	if server2.name == server1.name {
+		t.Fatalf("expected a different server after update; still got %s", server2.name)
+	}
+
 	// Verify session mapping still exists and points to a valid server
 	lb.sessionMu.RLock()
 	server, exists := lb.sessionMap["session123"]

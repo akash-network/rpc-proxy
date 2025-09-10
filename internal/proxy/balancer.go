@@ -240,11 +240,16 @@ func (slb *StickyLatencyBased) Next(req *http.Request) *Server {
 					"last_accessed", lastAccessed)
 			} else {
 				slb.sessionMu.RUnlock()
-
+				if server != nil && server.Healthy() { // serve only healthy cached servers.
+					slb.sessionMu.Lock()
+					slb.sessionTimestamps[sessionID] = time.Now()
+					slb.sessionMu.Unlock()
+					return server
+				}
 				slb.sessionMu.Lock()
-				slb.sessionTimestamps[sessionID] = time.Now()
+				delete(slb.sessionMap, sessionID)
+				delete(slb.sessionTimestamps, sessionID)
 				slb.sessionMu.Unlock()
-				return server
 			}
 		} else {
 			slb.sessionMu.RUnlock()
@@ -278,6 +283,36 @@ func (slb *StickyLatencyBased) extractSessionID(req *http.Request) string {
 // and cleans up session mappings for servers that no longer exist.
 func (slb *StickyLatencyBased) Update(servers []*Server) {
 	slb.LatencyBased.Update(servers)
+	slb.pruneInvalidSessions(servers)
+}
+
+// pruneInvalidSessions removes session mappings for servers that no longer exist
+// in the provided server list.
+func (slb *StickyLatencyBased) pruneInvalidSessions(servers []*Server) {
+	// Create a lookup map from the input servers for O(1) lookups
+	serverExists := make(map[string]bool, len(servers))
+	for _, s := range servers {
+		if s != nil {
+			serverExists[s.name] = true
+		}
+	}
+
+	slb.sessionMu.Lock()
+	defer slb.sessionMu.Unlock()
+
+	for sid, srv := range slb.sessionMap {
+		if srv == nil || !serverExists[srv.name] {
+			delete(slb.sessionMap, sid)
+			delete(slb.sessionTimestamps, sid)
+			if srv != nil {
+				slb.log.Debug(
+					"removed sticky session for deleted server",
+					"session_id", sid,
+					"server", srv.name,
+				)
+			}
+		}
+	}
 }
 
 // cleanupExpiredSessions runs in a background goroutine to clean up expired sessions
