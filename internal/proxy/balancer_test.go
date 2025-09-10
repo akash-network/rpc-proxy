@@ -17,7 +17,7 @@ import (
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
-func TestRoundRobin_Next(t *testing.T) {
+func TestRoundRobin_NextServer(t *testing.T) {
 	servers := []*Server{
 		{
 			name:         "a",
@@ -67,7 +67,7 @@ func TestRoundRobin_Next(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < n; j++ {
 				t.Logf("goroutine %d: ", id)
-				lb.Next(nil)
+				lb.NextServer(nil)
 			}
 		}(i)
 	}
@@ -79,7 +79,7 @@ func TestRoundRobin_Next(t *testing.T) {
 	}
 }
 
-func TestLatencyBased_Next(t *testing.T) {
+func TestLatencyBased_NextServer(t *testing.T) {
 	servers := []*Server{
 		{
 			name:         "a",
@@ -142,7 +142,7 @@ func TestLatencyBased_Next(t *testing.T) {
 		go func(id int) {
 			for j := 0; j < n; j++ {
 				t.Logf("goroutine %d: ", id)
-				queue <- lb.Next(nil)
+				queue <- lb.NextServer(nil)
 			}
 			wg.Done()
 		}(i)
@@ -190,7 +190,7 @@ func TestStickyLatencyBased_SessionAffinity(t *testing.T) {
 	req1.Header.Set(ProxyKeyHeader, "session123")
 
 	// First request should select a server (using weighted random selection)
-	server1 := lb.Next(req1)
+	server1 := lb.NextServer(req1)
 	if server1 == nil {
 		t.Fatal("expected a server to be selected")
 	}
@@ -199,7 +199,7 @@ func TestStickyLatencyBased_SessionAffinity(t *testing.T) {
 	// Second request with same session ID should go to same server
 	req2 := createTestRequest()
 	req2.Header.Set(ProxyKeyHeader, "session123")
-	server2 := lb.Next(req2)
+	server2 := lb.NextServer(req2)
 
 	if server2.name != server1.name {
 		t.Errorf("expected same server %s, got %s", server1.name, server2.name)
@@ -208,7 +208,7 @@ func TestStickyLatencyBased_SessionAffinity(t *testing.T) {
 	// Different session ID should potentially select different server (but likely same due to latency)
 	req3 := createTestRequest()
 	req3.Header.Set(ProxyKeyHeader, "session456")
-	server3 := lb.Next(req3)
+	server3 := lb.NextServer(req3)
 
 	if server3 == nil {
 		t.Fatal("expected a server to be selected")
@@ -230,7 +230,7 @@ func TestStickyLatencyBased_NoProxyKey(t *testing.T) {
 	req1 := createTestRequest()
 	// No X-PROXY-KEY header set
 
-	server1 := lb.Next(req1)
+	server1 := lb.NextServer(req1)
 	if server1 == nil {
 		t.Fatal("expected a server to be selected")
 	}
@@ -241,7 +241,7 @@ func TestStickyLatencyBased_NoProxyKey(t *testing.T) {
 
 	// Second request without X-PROXY-KEY should also use latency-based selection
 	req2 := createTestRequest()
-	server2 := lb.Next(req2)
+	server2 := lb.NextServer(req2)
 
 	if server2 == nil {
 		t.Fatal("expected a server to be selected")
@@ -265,7 +265,7 @@ func TestStickyLatencyBased_SessionPersistence(t *testing.T) {
 	req1 := createTestRequest()
 	req1.Header.Set(ProxyKeyHeader, "session123")
 
-	server1 := lb.Next(req1)
+	server1 := lb.NextServer(req1)
 	if server1 == nil {
 		t.Fatal("expected a server to be selected")
 	}
@@ -273,7 +273,7 @@ func TestStickyLatencyBased_SessionPersistence(t *testing.T) {
 	// Second request with same session should go to same server
 	req2 := createTestRequest()
 	req2.Header.Set(ProxyKeyHeader, "session123")
-	server2 := lb.Next(req2)
+	server2 := lb.NextServer(req2)
 
 	if server2 == nil {
 		t.Fatal("expected a server to be selected")
@@ -304,7 +304,7 @@ func TestStickyLatencyBased_SessionTimeout(t *testing.T) {
 	req1 := createTestRequest()
 	req1.Header.Set(ProxyKeyHeader, "session123")
 
-	server1 := lb.Next(req1)
+	server1 := lb.NextServer(req1)
 	if server1 == nil {
 		t.Fatal("expected a server to be selected")
 	}
@@ -344,7 +344,7 @@ func TestStickyLatencyBased_CacheHitMiss(t *testing.T) {
 	req.Header.Set(ProxyKeyHeader, "cache-test")
 
 	// First request - cache miss, should create new session
-	server1 := lb.Next(req)
+	server1 := lb.NextServer(req)
 	if server1 == nil {
 		t.Fatal("expected a server to be selected")
 	}
@@ -362,7 +362,7 @@ func TestStickyLatencyBased_CacheHitMiss(t *testing.T) {
 	}
 
 	// Second request within timeout - cache hit, should return same server
-	server2 := lb.Next(req)
+	server2 := lb.NextServer(req)
 	if server2 != server1 {
 		t.Error("expected same server for cache hit")
 	}
@@ -371,7 +371,7 @@ func TestStickyLatencyBased_CacheHitMiss(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Third request after timeout - cache miss due to expiry, should trigger inline cleanup
-	server3 := lb.Next(req)
+	server3 := lb.NextServer(req)
 	if server3 == nil {
 		t.Fatal("expected a server to be selected after timeout")
 	}
@@ -412,7 +412,7 @@ func TestStickyLatencyBased_ProxyKeyHeader(t *testing.T) {
 	req1 := createTestRequest()
 	req1.Header.Set(ProxyKeyHeader, "session-priority")
 
-	server1 := lb.Next(req1)
+	server1 := lb.NextServer(req1)
 	if server1 == nil {
 		t.Fatal("expected a server to be selected")
 	}
@@ -421,7 +421,7 @@ func TestStickyLatencyBased_ProxyKeyHeader(t *testing.T) {
 	req2 := createTestRequest()
 	req2.Header.Set(ProxyKeyHeader, "session-priority")
 
-	server2 := lb.Next(req2)
+	server2 := lb.NextServer(req2)
 	if server2.name != server1.name {
 		t.Errorf("expected same server %s, got %s", server1.name, server2.name)
 	}
@@ -455,7 +455,7 @@ func TestStickyLatencyBased_ConcurrentAccess(t *testing.T) {
 				req := createTestRequest()
 				req.Header.Set(ProxyKeyHeader, sessionID)
 
-				server := lb.Next(req)
+				server := lb.NextServer(req)
 				if server == nil {
 					t.Errorf("goroutine %d: expected a server to be selected", goroutineID)
 					return
@@ -490,7 +490,7 @@ func TestStickyLatencyBased_ServerUpdate(t *testing.T) {
 	req := createTestRequest()
 	req.Header.Set(ProxyKeyHeader, "session123")
 
-	server1 := lb.Next(req)
+	server1 := lb.NextServer(req)
 	if server1 == nil {
 		t.Fatal("expected a server to be selected")
 	}
@@ -503,7 +503,7 @@ func TestStickyLatencyBased_ServerUpdate(t *testing.T) {
 	lb.Update(updatedServers)
 
 	// Request with same session should now go to a different server since server1 is gone
-	server2 := lb.Next(req)
+	server2 := lb.NextServer(req)
 	if server2 == nil {
 		t.Fatal("expected a server to be selected")
 	}

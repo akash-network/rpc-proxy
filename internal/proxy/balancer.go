@@ -21,8 +21,8 @@ const ProxyKeyHeader = "X-PROXY-KEY"
 type LoadBalancer interface {
 	// Update updates the list of available servers.
 	Update([]*Server)
-	// Next returns the next server to be used based on the load balancing algorithm.
-	Next(*http.Request) *Server
+	// NextServer returns the next server to be used based on the load balancing algorithm.
+	NextServer(*http.Request) *Server
 }
 
 // RoundRobin is a simple load balancer that distributes incoming requests
@@ -45,9 +45,9 @@ func NewRoundRobin(log *slog.Logger) *RoundRobin {
 	}
 }
 
-// Next returns the next server to be used based on the round-robin algorithm.
+// NextServer returns the next server to be used based on the round-robin algorithm.
 // If the selected server is unhealthy, it will recursively try the next server.
-func (rr *RoundRobin) Next(_ *http.Request) *Server {
+func (rr *RoundRobin) NextServer(r *http.Request) *Server {
 	rr.mu.Lock()
 	if len(rr.servers) == 0 {
 		return nil
@@ -60,7 +60,7 @@ func (rr *RoundRobin) Next(_ *http.Request) *Server {
 		return server
 	}
 	rr.log.Warn("server is unhealthy, trying next", "name", server.name)
-	return rr.Next(nil)
+	return rr.NextServer(r)
 }
 
 // Update updates the list of available servers.
@@ -100,7 +100,7 @@ func NewLatencyBased(log *slog.Logger) *LatencyBased {
 	}
 }
 
-// Next returns the next server based on the weighted random selection,
+// NextServer returns the next server based on the weighted random selection,
 // where the weight is determined by the latency Rate of each server. The cumulative
 // approach is used to select a server, effectively creating a "range" for each
 // server in the interval [0, 1]. For example, if the rates are [0.5, 0.3, 0.2],
@@ -108,7 +108,7 @@ func NewLatencyBased(log *slog.Logger) *LatencyBased {
 // The random number will fall into one of these ranges, effectively selecting
 // a server based on its latency rate. This approach works regardless of the order of
 // the servers, so there's no need to sort them based on latency or rate.
-func (rr *LatencyBased) Next(_ *http.Request) *Server {
+func (rr *LatencyBased) NextServer(_ *http.Request) *Server {
 	rr.mu.Lock()
 	defer rr.mu.Unlock()
 
@@ -204,13 +204,13 @@ func NewStickyLatencyBased(log *slog.Logger, sessionTimeout time.Duration) *Stic
 	return slb
 }
 
-// Next returns the next server based on session affinity and latency.
+// NextServer returns the next server based on session affinity and latency.
 // It first checks for existing session identifiers in headers or cookies,
 // then falls back to the embedded LatencyBased selection for new sessions.
-func (slb *StickyLatencyBased) Next(req *http.Request) *Server {
+func (slb *StickyLatencyBased) NextServer(req *http.Request) *Server {
 	if req == nil {
 		slb.log.Warn("provided request is nil")
-		return slb.LatencyBased.Next(nil)
+		return slb.LatencyBased.NextServer(req)
 	}
 
 	slb.LatencyBased.mu.Lock()
@@ -256,7 +256,7 @@ func (slb *StickyLatencyBased) Next(req *http.Request) *Server {
 		}
 	}
 
-	server := slb.LatencyBased.Next(req)
+	server := slb.LatencyBased.NextServer(req)
 
 	if server != nil && sessionID != "" {
 		slb.sessionMu.Lock()

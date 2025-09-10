@@ -50,7 +50,6 @@ func TestRPCProxy(t *testing.T) {
 
 	stats := proxy.Stats()
 	require.Len(t, stats, 3)
-
 }
 
 func TestRestProxy(t *testing.T) {
@@ -319,6 +318,6 @@ type MockLoadBalancer struct{}
 
 func (m *MockLoadBalancer) Update(servers []*Server) {}
 
-func (m *MockLoadBalancer) Next(*http.Request) *Server {
+func (m *MockLoadBalancer) NextServer(*http.Request) *Server {
 	return nil
 }
