@@ -44,7 +44,7 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if srv := p.lb.Next(); srv != nil {
+	if srv := p.lb.NextServer(r); srv != nil {
 
 		// Create the reverse proxy
 		proxy := httputil.ReverseProxy{

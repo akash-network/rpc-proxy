@@ -165,9 +165,11 @@ func runProxy(cfg config.Config) {
 		},
 	}
 	seeder := seed.New(seederCfg, log, rpcListener, restListener, grpcListener)
-	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewLatencyBased(log))
-	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewLatencyBased(log))
-	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewLatencyBased(log))
+
+	blockTime := 6 * time.Second
+	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime))
+	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime))
+	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log, blockTime))
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
@@ -264,7 +266,7 @@ func runProxy(cfg config.Config) {
 }
 
 func main() {
-	var v = viper.New()
+	v := viper.New()
 
 	if err := NewRootCmd(v).Execute(); err != nil {
 		log.Fatalf("failed to execute command: %v", err)
