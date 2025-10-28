@@ -79,6 +79,17 @@ func TestRoundRobin_NextServer(t *testing.T) {
 	}
 }
 
+func TestLatencyBased_NextServer_EmptyServers(t *testing.T) {
+	lb := NewLatencyBased(slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	lb.Update([]*Server{})
+
+	// Should return nil when no servers are available
+	server := lb.NextServer(nil)
+	if server != nil {
+		t.Errorf("expected nil server when no servers available, got %v", server)
+	}
+}
+
 func TestLatencyBased_NextServer(t *testing.T) {
 	servers := []*Server{
 		{
