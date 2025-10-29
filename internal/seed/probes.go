@@ -118,7 +118,7 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 	start := time.Now()
 	client := &http.Client{}
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/syncing", node.Address), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/cosmos/base/tendermint/v1beta1/syncing", node.Address), nil)
 	if err != nil {
 		return Status{}, fmt.Errorf("creating REST client request: %w", err)
 	}
@@ -130,7 +130,7 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return Status{}, fmt.Errorf("unexpected status from REST client [%d %s]: %w", resp.StatusCode, resp.Status, err)
+		return Status{}, fmt.Errorf("unexpected status from REST client [%d %s]", resp.StatusCode, resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -143,7 +143,7 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 		return Status{}, fmt.Errorf("unmarshaling body from REST client response: %w", err)
 	}
 
-	latestBlockReq, err := http.NewRequest("GET", fmt.Sprintf("%s/blocks/latest", node.Address), nil)
+	latestBlockReq, err := http.NewRequest("GET", fmt.Sprintf("%s/cosmos/base/tendermint/v1beta1/blocks/latest", node.Address), nil)
 	if err != nil {
 		return Status{}, fmt.Errorf("creating REST client request: %w", err)
 	}
@@ -155,7 +155,7 @@ func RESTProbe(ctx context.Context, node Node) (Status, error) {
 	defer latestBlockResp.Body.Close()
 
 	if latestBlockResp.StatusCode != 200 {
-		return Status{}, fmt.Errorf("unexpected status from REST client [%d %s]: %w", latestBlockResp.StatusCode, latestBlockResp.Status, err)
+		return Status{}, fmt.Errorf("unexpected status from REST client [%d %s]", latestBlockResp.StatusCode, latestBlockResp.Status)
 	}
 
 	latestBlockBody, err := io.ReadAll(latestBlockResp.Body)

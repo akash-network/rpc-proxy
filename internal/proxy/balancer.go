@@ -128,7 +128,10 @@ func (rr *LatencyBased) NextServer(_ *http.Request) *Server {
 	}
 
 	// Fallback, shouldn't be reached if rates are normalized
-	return rr.servers[len(rr.servers)-1].Server
+	if len(rr.servers) > 0 {
+		return rr.servers[len(rr.servers)-1].Server
+	}
+	return nil
 }
 
 // Update updates the list of available servers and their corresponding rates
