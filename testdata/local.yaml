@@ -30,7 +30,7 @@ health:
 cors:
   allow-origin: "*"
   allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
-  allow-headers: "Content-Type, Authorization"
+  allow-headers: "Content-Type, Authorization, Traceparent, Baggage"
 
 metrics:
   enabled: true

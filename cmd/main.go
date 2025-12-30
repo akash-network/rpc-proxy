@@ -108,7 +108,7 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	// CORS configuration
 	rootCmd.PersistentFlags().String("cors.allow-origin", "*", "CORS allowed origin")
 	rootCmd.PersistentFlags().String("cors.allow-methods", "GET, POST, PUT, DELETE, OPTIONS", "CORS allowed methods")
-	rootCmd.PersistentFlags().String("cors.allow-headers", "Content-Type, Authorization", "CORS allowed headers")
+	rootCmd.PersistentFlags().String("cors.allow-headers", "Content-Type, Authorization, Traceparent, Baggage", "CORS allowed headers")
 
 	// Metrics configuration
 	rootCmd.PersistentFlags().Bool("metrics.enabled", true, "Enable metrics server")
