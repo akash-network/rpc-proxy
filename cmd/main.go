@@ -24,6 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
+	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
 	"github.com/akash-network/rpc-proxy/internal/proxy"
 	"github.com/akash-network/rpc-proxy/internal/seed"
@@ -105,6 +106,10 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	rootCmd.PersistentFlags().Duration("health.healthy-threshold", 10*time.Second, "Response time threshold for healthy nodes")
 	rootCmd.PersistentFlags().Duration("health.proxy-request-timeout", 15*time.Second, "Timeout for proxied requests")
 
+	// Halt detection configuration
+	rootCmd.PersistentFlags().Bool("halt.enabled", true, "Enable network halt detection circuit breaker")
+	rootCmd.PersistentFlags().Duration("halt.threshold", 30*time.Second, "Duration without new blocks before declaring a network halt")
+
 	// CORS configuration
 	rootCmd.PersistentFlags().String("cors.allow-origin", "*", "CORS allowed origin")
 	rootCmd.PersistentFlags().String("cors.allow-methods", "GET, POST, PUT, DELETE, OPTIONS", "CORS allowed methods")
@@ -167,13 +172,19 @@ func runProxy(cfg config.Config) {
 	seeder := seed.New(seederCfg, log, rpcListener, restListener, grpcListener)
 
 	blockTime := 6 * time.Second
-	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime))
-	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime))
-	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log, blockTime))
+
+	haltDetector := newHaltDetector(cfg.Halt, log)
+
+	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), haltDetector)
+	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), haltDetector)
+	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log, blockTime), haltDetector)
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
 	seeder.Start(ctx)
+	if haltDetector != nil {
+		haltDetector.Start(ctx)
+	}
 	rpcProxyHandler.Start(ctx)
 	restProxyHandler.Start(ctx)
 	grpcProxyHandler.Start(ctx)
@@ -271,6 +282,26 @@ func main() {
 	if err := NewRootCmd(v).Execute(); err != nil {
 		log.Fatalf("failed to execute command: %v", err)
 	}
+}
+
+// haltChecksPerThreshold controls how many halt checks happen within one threshold period.
+// For example, with a 60s threshold, checks run every 10s.
+const haltChecksPerThreshold = 6
+
+func newHaltDetector(cfg config.HaltConfig, log *slog.Logger) *halt.Detector {
+	if !cfg.Enabled {
+		return nil
+	}
+	threshold := cfg.Threshold
+	if threshold == 0 {
+		threshold = 30 * time.Second
+	}
+	checkPeriod := threshold / haltChecksPerThreshold
+	if checkPeriod < time.Second {
+		checkPeriod = time.Second
+	}
+	log.Info("halt detection enabled", "threshold", threshold, "check_period", checkPeriod)
+	return halt.NewDetector(threshold, checkPeriod, log)
 }
 
 func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandler *proxy.RPCProxy, restProxyHandler *proxy.RestProxy) *http.Server {

@@ -51,6 +51,11 @@ type HealthConfig struct {
 	ProxyRequestTimeout time.Duration `mapstructure:"proxy-request-timeout"`
 }
 
+type HaltConfig struct {
+	Enabled   bool          `mapstructure:"enabled"`
+	Threshold time.Duration `mapstructure:"threshold"`
+}
+
 type CORSConfig struct {
 	AllowOrigin  string `mapstructure:"allow-origin"`
 	AllowMethods string `mapstructure:"allow-methods"`
@@ -69,6 +74,7 @@ type Config struct {
 	TLS     TLSConfig     `mapstructure:"tls"`
 	Seed    SeedConfig    `mapstructure:"seed"`
 	Health  HealthConfig  `mapstructure:"health"`
+	Halt    HaltConfig    `mapstructure:"halt"`
 	CORS    CORSConfig    `mapstructure:"cors"`
 	Metrics MetricsConfig `mapstructure:"metrics"`
 }

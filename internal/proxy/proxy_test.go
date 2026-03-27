@@ -30,7 +30,7 @@ func TestRPCProxy(t *testing.T) {
 	proxy := NewRPCProxy(ch, config.HealthConfig{
 		HealthyThreshold:    10 * time.Millisecond,
 		ProxyRequestTimeout: time.Second,
-	}, logger, NewRoundRobin(logger))
+	}, logger, NewRoundRobin(logger), nil)
 
 	proxy.Start(ctx)
 
@@ -62,7 +62,7 @@ func TestRestProxy(t *testing.T) {
 	proxy := NewRestProxy(ch, config.HealthConfig{
 		HealthyThreshold:    10 * time.Millisecond,
 		ProxyRequestTimeout: time.Second,
-	}, logger, NewRoundRobin(logger))
+	}, logger, NewRoundRobin(logger), nil)
 
 	proxy.Start(ctx)
 

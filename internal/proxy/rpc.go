@@ -2,11 +2,13 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
+	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
@@ -25,13 +27,15 @@ func NewRPCProxy(
 	cfg config.HealthConfig,
 	log *slog.Logger,
 	lb LoadBalancer,
+	hd *halt.Detector,
 ) *RPCProxy {
 	return &RPCProxy{
 		Proxy: Proxy{
-			cfg: cfg,
-			ch:  ch,
-			log: log,
-			lb:  lb,
+			cfg:          cfg,
+			ch:           ch,
+			log:          log,
+			lb:           lb,
+			haltDetector: hd,
 		},
 	}
 }
@@ -43,6 +47,14 @@ func (p *RPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if p.shuttingDown.Load() {
 		p.log.Error("proxy is shutting down")
 		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if p.haltDetector != nil && p.haltDetector.IsHalted() {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprintf(w, `{"error":"%s"}`, p.haltDetector.HaltMessage())
 		return
 	}
 

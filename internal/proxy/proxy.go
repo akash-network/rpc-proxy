@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
 	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 
@@ -31,6 +32,7 @@ type Proxy struct {
 	initialized  atomic.Bool
 	shuttingDown atomic.Bool
 	lb           LoadBalancer
+	haltDetector *halt.Detector
 }
 
 type Updater func(s seed.Seed)
