@@ -2,10 +2,12 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
 
+	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
 
 	"github.com/akash-network/rpc-proxy/internal/seed"
@@ -24,12 +26,14 @@ func NewGRPCProxy(
 	ch chan seed.Seed,
 	log *slog.Logger,
 	lb LoadBalancer,
+	hd *halt.Detector,
 ) *GRPCProxy {
 	return &GRPCProxy{
 		Proxy: Proxy{
-			ch:  ch,
-			log: log,
-			lb:  lb,
+			ch:           ch,
+			log:          log,
+			lb:           lb,
+			haltDetector: hd,
 		},
 	}
 }
@@ -41,6 +45,12 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if p.shuttingDown.Load() {
 		p.log.Error("proxy is shutting down")
 		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if p.haltDetector != nil && p.haltDetector.IsHalted() {
+		err := p.writeHaltResponse(w)
+		p.log.Error(fmt.Errorf("writing halt response: %w", err).Error())
 		return
 	}
 

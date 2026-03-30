@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
 	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 
@@ -31,12 +33,25 @@ type Proxy struct {
 	initialized  atomic.Bool
 	shuttingDown atomic.Bool
 	lb           LoadBalancer
+	haltDetector *halt.Detector
 }
 
 type Updater func(s seed.Seed)
 
 func (p *Proxy) Ready() bool { return p.initialized.Load() }
-func (p *Proxy) Live() bool  { return !p.shuttingDown.Load() && p.initialized.Load() }
+
+type haltErrorResponse struct {
+	Error string `json:"error"`
+}
+
+func (p *Proxy) writeHaltResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", "30")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	return json.NewEncoder(w).Encode(haltErrorResponse{Error: p.haltDetector.HaltMessage()})
+}
+
+func (p *Proxy) Live() bool { return !p.shuttingDown.Load() && p.initialized.Load() }
 
 func (p *Proxy) Stats() []ServerStat {
 	var result []ServerStat

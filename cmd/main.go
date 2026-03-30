@@ -23,7 +23,9 @@ import (
 	"golang.org/x/net/http2/h2c"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/akash-network/rpc-proxy/internal/block"
 	"github.com/akash-network/rpc-proxy/internal/config"
+	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
 	"github.com/akash-network/rpc-proxy/internal/proxy"
 	"github.com/akash-network/rpc-proxy/internal/seed"
@@ -73,8 +75,7 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("reading configuration: %w", err)
 			}
-			runProxy(cfg)
-			return nil
+			return runProxy(cfg)
 		},
 	}
 
@@ -105,6 +106,10 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	rootCmd.PersistentFlags().Duration("health.healthy-threshold", 10*time.Second, "Response time threshold for healthy nodes")
 	rootCmd.PersistentFlags().Duration("health.proxy-request-timeout", 15*time.Second, "Timeout for proxied requests")
 
+	// Halt detection configuration
+	rootCmd.PersistentFlags().Bool("halt.enabled", true, "Enable network halt detection circuit breaker")
+	rootCmd.PersistentFlags().Duration("halt.threshold", 30*time.Second, "Duration without new blocks before declaring a network halt")
+
 	// CORS configuration
 	rootCmd.PersistentFlags().String("cors.allow-origin", "*", "CORS allowed origin")
 	rootCmd.PersistentFlags().String("cors.allow-methods", "GET, POST, PUT, DELETE, OPTIONS", "CORS allowed methods")
@@ -122,7 +127,7 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	return rootCmd
 }
 
-func runProxy(cfg config.Config) {
+func runProxy(cfg config.Config) error {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	var metricsServer *http.Server
@@ -167,13 +172,26 @@ func runProxy(cfg config.Config) {
 	seeder := seed.New(seederCfg, log, rpcListener, restListener, grpcListener)
 
 	blockTime := 6 * time.Second
-	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime))
-	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime))
-	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log, blockTime))
+
+	var haltDetector *halt.Detector
+	var err error
+	if cfg.Halt.Enabled {
+		haltDetector, err = newHaltDetector(cfg.Halt, log)
+		if err != nil {
+			return fmt.Errorf("initializing halt detector: %w", err)
+		}
+	}
+
+	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), haltDetector)
+	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), nil)
+	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log, blockTime), nil)
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
 	seeder.Start(ctx)
+	if haltDetector != nil {
+		haltDetector.Start(ctx)
+	}
 	rpcProxyHandler.Start(ctx)
 	restProxyHandler.Start(ctx)
 	grpcProxyHandler.Start(ctx)
@@ -262,7 +280,9 @@ func runProxy(cfg config.Config) {
 
 	if err := proxyGroup.Wait(); err != nil {
 		log.Error("there was an error an a proxy", "error", err)
+		return err
 	}
+	return nil
 }
 
 func main() {
@@ -271,6 +291,29 @@ func main() {
 	if err := NewRootCmd(v).Execute(); err != nil {
 		log.Fatalf("failed to execute command: %v", err)
 	}
+}
+
+func newHaltDetector(cfg config.HaltConfig, log *slog.Logger) (*halt.Detector, error) {
+	// haltChecksPerThreshold controls how many halt checks happen within one threshold period.
+	// For example, with a 60s threshold, checks run every 10s.
+	const haltChecksPerThreshold = 6
+
+	if cfg.Threshold < 0 {
+		return nil, fmt.Errorf("halt.threshold must be positive, got %s", cfg.Threshold)
+	}
+
+	threshold := cfg.Threshold
+	if threshold == 0 {
+		threshold = 30 * time.Second
+	}
+
+	checkPeriod := threshold / haltChecksPerThreshold
+	if checkPeriod < time.Second {
+		checkPeriod = time.Second
+	}
+
+	log.Info("halt detection enabled", "threshold", threshold, "check_period", checkPeriod)
+	return halt.NewDetector(threshold, checkPeriod, log, block.GetInstance()), nil
 }
 
 func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandler *proxy.RPCProxy, restProxyHandler *proxy.RestProxy) *http.Server {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
+	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
@@ -25,13 +26,15 @@ func NewRestProxy(
 	cfg config.HealthConfig,
 	log *slog.Logger,
 	lb LoadBalancer,
+	hd *halt.Detector,
 ) *RestProxy {
 	return &RestProxy{
 		Proxy: Proxy{
-			cfg: cfg,
-			ch:  ch,
-			log: log,
-			lb:  lb,
+			cfg:          cfg,
+			ch:           ch,
+			log:          log,
+			lb:           lb,
+			haltDetector: hd,
 		},
 	}
 }
@@ -43,6 +46,11 @@ func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if p.shuttingDown.Load() {
 		p.log.Error("proxy is shutting down")
 		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if p.haltDetector != nil && p.haltDetector.IsHalted() {
+		p.writeHaltResponse(w)
 		return
 	}
 
