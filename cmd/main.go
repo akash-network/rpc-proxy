@@ -176,8 +176,8 @@ func runProxy(cfg config.Config) {
 	haltDetector := newHaltDetector(cfg.Halt, log)
 
 	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), haltDetector)
-	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), haltDetector)
-	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log, blockTime), haltDetector)
+	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), nil)
+	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log, blockTime), nil)
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
@@ -284,11 +284,11 @@ func main() {
 	}
 }
 
-// haltChecksPerThreshold controls how many halt checks happen within one threshold period.
-// For example, with a 60s threshold, checks run every 10s.
-const haltChecksPerThreshold = 6
-
 func newHaltDetector(cfg config.HaltConfig, log *slog.Logger) *halt.Detector {
+	// haltChecksPerThreshold controls how many halt checks happen within one threshold period.
+	// For example, with a 60s threshold, checks run every 10s.
+	const haltChecksPerThreshold = 6
+
 	if !cfg.Enabled {
 		return nil
 	}
