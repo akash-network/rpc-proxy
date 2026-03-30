@@ -293,20 +293,20 @@ func newHaltDetector(cfg config.HaltConfig, log *slog.Logger) (*halt.Detector, e
 	// For example, with a 60s threshold, checks run every 10s.
 	const haltChecksPerThreshold = 6
 
-	if !cfg.Enabled {
-		return nil, nil
-	}
 	if cfg.Threshold < 0 {
 		return nil, fmt.Errorf("halt.threshold must be positive, got %s", cfg.Threshold)
 	}
+
 	threshold := cfg.Threshold
 	if threshold == 0 {
 		threshold = 30 * time.Second
 	}
+
 	checkPeriod := threshold / haltChecksPerThreshold
 	if checkPeriod < time.Second {
 		checkPeriod = time.Second
 	}
+
 	log.Info("halt detection enabled", "threshold", threshold, "check_period", checkPeriod)
 	return halt.NewDetector(threshold, checkPeriod, log), nil
 }
