@@ -16,22 +16,18 @@ import (
 type State int
 
 const (
-	// StateClosed is the normal operating state. Requests flow through.
-	StateClosed State = iota
-	// StateOpen means a network halt was detected. Requests are rejected.
-	StateOpen
-	// StateHalfOpen means the circuit breaker is testing if the network has recovered.
-	StateHalfOpen
+	// StateNormal is the normal operating state. It means the circuit breaker is closed. Requests flow through.
+	StateNormal State = iota
+	// StateHalted means a network halt was detected. It means the circuit breaker is open. Requests are rejected.
+	StateHalted
 )
 
 func (s State) String() string {
 	switch s {
-	case StateClosed:
-		return "closed"
-	case StateOpen:
-		return "open"
-	case StateHalfOpen:
-		return "half-open"
+	case StateNormal:
+		return "normal"
+	case StateHalted:
+		return "halted"
 	default:
 		return "unknown"
 	}
@@ -68,13 +64,13 @@ type Detector struct {
 // NewDetector creates a halt detector.
 // threshold is how long block height must be stale before declaring a halt.
 // checkPeriod is how often to check for staleness.
-func NewDetector(threshold time.Duration, checkPeriod time.Duration, log *slog.Logger) *Detector {
+func NewDetector(threshold time.Duration, checkPeriod time.Duration, log *slog.Logger, bm *block.BlockManager) *Detector {
 	return &Detector{
 		threshold:    threshold,
 		checkPeriod:  checkPeriod,
 		log:          log.With("component", "halt-detector"),
-		blockManager: block.GetInstance(),
-		state:        StateClosed,
+		blockManager: bm,
+		state:        StateNormal,
 	}
 }
 
@@ -115,8 +111,8 @@ func (d *Detector) check() {
 	d.mu.Lock()
 	prev := d.state
 	if halted {
-		if prev == StateClosed {
-			d.state = StateOpen
+		if prev == StateNormal {
+			d.state = StateHalted
 			d.log.Warn("network halt detected",
 				"last_block_advance", lastAdvanced,
 				"stale_for", staleDuration,
@@ -124,8 +120,8 @@ func (d *Detector) check() {
 			haltDetectedTotal.Inc()
 		}
 	} else {
-		if prev != StateClosed {
-			d.state = StateClosed
+		if prev != StateNormal {
+			d.state = StateNormal
 			d.log.Info("network recovered",
 				"last_block_advance", lastAdvanced,
 				"block_height", d.blockManager.GetLatestBlock())
@@ -149,7 +145,7 @@ func (d *Detector) State() State {
 
 // IsHalted returns true when the network is detected as halted (circuit open).
 func (d *Detector) IsHalted() bool {
-	return d.State() == StateOpen
+	return d.State() == StateHalted
 }
 
 // HaltMessage returns a human-readable message describing the current halt status.

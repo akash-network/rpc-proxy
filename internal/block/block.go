@@ -28,6 +28,12 @@ func GetInstance() *BlockManager {
 	return instance
 }
 
+// NewBlockManager creates a new standalone BlockManager.
+// Use this in tests to avoid shared singleton state.
+func NewBlockManager() *BlockManager {
+	return &BlockManager{}
+}
+
 // SetLatestBlock updates the latest block if it's greater than the current one.
 func (b *BlockManager) SetLatestBlock(newBlock int64) error {
 	now := time.Now().UnixNano()

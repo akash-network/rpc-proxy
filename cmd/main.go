@@ -23,6 +23,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/akash-network/rpc-proxy/internal/block"
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
@@ -312,7 +313,7 @@ func newHaltDetector(cfg config.HaltConfig, log *slog.Logger) (*halt.Detector, e
 	}
 
 	log.Info("halt detection enabled", "threshold", threshold, "check_period", checkPeriod)
-	return halt.NewDetector(threshold, checkPeriod, log), nil
+	return halt.NewDetector(threshold, checkPeriod, log, block.GetInstance()), nil
 }
 
 func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandler *proxy.RPCProxy, restProxyHandler *proxy.RestProxy) *http.Server {

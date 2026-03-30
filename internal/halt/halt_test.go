@@ -3,32 +3,43 @@ package halt
 import (
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/akash-network/rpc-proxy/internal/block"
-	"github.com/stretchr/testify/require"
 )
 
-func TestDetector_NoTripBeforeFirstProbe(t *testing.T) {
+func newTestDetector(t *testing.T, threshold time.Duration) (*Detector, *block.BlockManager) {
+	t.Helper()
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	d := NewDetector(100*time.Millisecond, 10*time.Millisecond, log)
+	bm := block.NewBlockManager()
+	d := NewDetector(threshold, 10*time.Millisecond, log, bm)
+	return d, bm
+}
+
+func TestDetector_NoTripBeforeFirstProbe(t *testing.T) {
+	d, _ := newTestDetector(t, 100*time.Millisecond)
 
 	d.check()
-	require.Equal(t, StateClosed, d.State())
+	if got := d.State(); got != StateNormal {
+		t.Fatalf("expected StateNormal, got %v", got)
+	}
 }
 
 func TestDetector_TripsAfterThreshold(t *testing.T) {
-	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	d := NewDetector(100*time.Millisecond, 10*time.Millisecond, log)
+	d, bm := newTestDetector(t, 100*time.Millisecond)
 
-	bm := block.GetInstance()
 	_ = bm.SetLatestBlock(100)
 
 	// Initially closed
 	d.check()
-	require.Equal(t, StateClosed, d.State())
-	require.False(t, d.IsHalted())
+	if d.State() != StateNormal {
+		t.Fatal("expected StateNormal initially")
+	}
+	if d.IsHalted() {
+		t.Fatal("expected IsHalted=false initially")
+	}
 
 	// Wait past threshold with no block advance
 	time.Sleep(150 * time.Millisecond)
@@ -37,40 +48,48 @@ func TestDetector_TripsAfterThreshold(t *testing.T) {
 	_ = bm.SetLatestBlock(100)
 
 	d.check()
-	require.Equal(t, StateOpen, d.State())
-	require.True(t, d.IsHalted())
+	if d.State() != StateHalted {
+		t.Fatalf("expected StateHalted after threshold, got %v", d.State())
+	}
+	if !d.IsHalted() {
+		t.Fatal("expected IsHalted=true after threshold")
+	}
 }
 
 func TestDetector_RecoverAfterNewBlock(t *testing.T) {
-	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	d := NewDetector(100*time.Millisecond, 10*time.Millisecond, log)
+	d, bm := newTestDetector(t, 100*time.Millisecond)
 
-	bm := block.GetInstance()
 	_ = bm.SetLatestBlock(200)
 
 	time.Sleep(150 * time.Millisecond)
 	_ = bm.SetLatestBlock(200)
 	d.check()
-	require.Equal(t, StateOpen, d.State())
+	if d.State() != StateHalted {
+		t.Fatalf("expected StateHalted, got %v", d.State())
+	}
 
 	// New block arrives
 	_ = bm.SetLatestBlock(201)
 	d.check()
-	require.Equal(t, StateClosed, d.State())
-	require.False(t, d.IsHalted())
+	if d.State() != StateNormal {
+		t.Fatalf("expected StateNormal after recovery, got %v", d.State())
+	}
+	if d.IsHalted() {
+		t.Fatal("expected IsHalted=false after recovery")
+	}
 }
 
 func TestDetector_NoTripWhenNodesUnreachable(t *testing.T) {
-	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	d := NewDetector(100*time.Millisecond, 10*time.Millisecond, log)
+	d, bm := newTestDetector(t, 100*time.Millisecond)
 
-	bm := block.GetInstance()
 	// Simulate a successful probe
 	_ = bm.SetLatestBlock(400)
 
 	// Initially closed
 	d.check()
-	require.Equal(t, StateClosed, d.State())
+	if d.State() != StateNormal {
+		t.Fatal("expected StateNormal initially")
+	}
 
 	// Wait past threshold WITHOUT any further SetLatestBlock calls.
 	// This simulates all nodes becoming unreachable — no probe succeeds,
@@ -80,28 +99,44 @@ func TestDetector_NoTripWhenNodesUnreachable(t *testing.T) {
 	// check() should NOT trip because lastChecked is also stale,
 	// meaning no node was reachable recently.
 	d.check()
-	require.Equal(t, StateClosed, d.State())
-	require.False(t, d.IsHalted())
+	if d.State() != StateNormal {
+		t.Fatalf("expected StateNormal when nodes unreachable, got %v", d.State())
+	}
+	if d.IsHalted() {
+		t.Fatal("expected IsHalted=false when nodes unreachable")
+	}
 }
 
 func TestDetector_HaltMessage(t *testing.T) {
-	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	d := NewDetector(50*time.Millisecond, 10*time.Millisecond, log)
+	d, bm := newTestDetector(t, 50*time.Millisecond)
 
-	bm := block.GetInstance()
 	_ = bm.SetLatestBlock(500)
 	time.Sleep(60 * time.Millisecond)
 	_ = bm.SetLatestBlock(500)
 	d.check()
 
 	msg := d.HaltMessage()
-	require.Contains(t, msg, "network halt detected")
-	require.Contains(t, msg, "500")
+	if !strings.Contains(msg, "network halt detected") {
+		t.Fatalf("expected message to contain 'network halt detected', got %q", msg)
+	}
+	if !strings.Contains(msg, "500") {
+		t.Fatalf("expected message to contain '500', got %q", msg)
+	}
 }
 
 func TestState_String(t *testing.T) {
-	require.Equal(t, "closed", StateClosed.String())
-	require.Equal(t, "open", StateOpen.String())
-	require.Equal(t, "half-open", StateHalfOpen.String())
-	require.Equal(t, "unknown", State(99).String())
+	tests := []struct {
+		state State
+		want  string
+	}{
+		{StateNormal, "normal"},
+		{StateHalted, "halted"},
+		{StateRecovering, "recovering"},
+		{State(99), "unknown"},
+	}
+	for _, tt := range tests {
+		if got := tt.state.String(); got != tt.want {
+			t.Errorf("State(%d).String() = %q, want %q", tt.state, got, tt.want)
+		}
+	}
 }
