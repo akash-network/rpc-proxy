@@ -51,10 +51,8 @@ func (p *RPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if p.haltDetector != nil && p.haltDetector.IsHalted() {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Retry-After", "30")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprintf(w, `{"error":"%s"}`, p.haltDetector.HaltMessage())
+		err := p.writeHaltResponse(w)
+		p.log.Error(fmt.Errorf("writing halt response: %w", err).Error())
 		return
 	}
 

@@ -74,8 +74,7 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("reading configuration: %w", err)
 			}
-			runProxy(cfg)
-			return nil
+			return runProxy(cfg)
 		},
 	}
 
@@ -127,7 +126,7 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	return rootCmd
 }
 
-func runProxy(cfg config.Config) {
+func runProxy(cfg config.Config) error {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	var metricsServer *http.Server
@@ -173,7 +172,10 @@ func runProxy(cfg config.Config) {
 
 	blockTime := 6 * time.Second
 
-	haltDetector := newHaltDetector(cfg.Halt, log)
+	haltDetector, err := newHaltDetector(cfg.Halt, log)
+	if err != nil {
+		return fmt.Errorf("initializing halt detector: %w", err)
+	}
 
 	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), haltDetector)
 	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), nil)
@@ -273,7 +275,9 @@ func runProxy(cfg config.Config) {
 
 	if err := proxyGroup.Wait(); err != nil {
 		log.Error("there was an error an a proxy", "error", err)
+		return err
 	}
+	return nil
 }
 
 func main() {
@@ -284,13 +288,16 @@ func main() {
 	}
 }
 
-func newHaltDetector(cfg config.HaltConfig, log *slog.Logger) *halt.Detector {
+func newHaltDetector(cfg config.HaltConfig, log *slog.Logger) (*halt.Detector, error) {
 	// haltChecksPerThreshold controls how many halt checks happen within one threshold period.
 	// For example, with a 60s threshold, checks run every 10s.
 	const haltChecksPerThreshold = 6
 
 	if !cfg.Enabled {
-		return nil
+		return nil, nil
+	}
+	if cfg.Threshold < 0 {
+		return nil, fmt.Errorf("halt.threshold must be positive, got %s", cfg.Threshold)
 	}
 	threshold := cfg.Threshold
 	if threshold == 0 {
@@ -301,7 +308,7 @@ func newHaltDetector(cfg config.HaltConfig, log *slog.Logger) *halt.Detector {
 		checkPeriod = time.Second
 	}
 	log.Info("halt detection enabled", "threshold", threshold, "check_period", checkPeriod)
-	return halt.NewDetector(threshold, checkPeriod, log)
+	return halt.NewDetector(threshold, checkPeriod, log), nil
 }
 
 func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandler *proxy.RPCProxy, restProxyHandler *proxy.RestProxy) *http.Server {

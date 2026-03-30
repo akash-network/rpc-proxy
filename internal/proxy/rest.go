@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -51,10 +50,7 @@ func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if p.haltDetector != nil && p.haltDetector.IsHalted() {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Retry-After", "30")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprintf(w, `{"error":"%s"}`, p.haltDetector.HaltMessage())
+		p.writeHaltResponse(w)
 		return
 	}
 
