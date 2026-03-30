@@ -172,9 +172,13 @@ func runProxy(cfg config.Config) error {
 
 	blockTime := 6 * time.Second
 
-	haltDetector, err := newHaltDetector(cfg.Halt, log)
-	if err != nil {
-		return fmt.Errorf("initializing halt detector: %w", err)
+	var haltDetector *halt.Detector
+	var err error
+	if cfg.Halt.Enabled {
+		haltDetector, err = newHaltDetector(cfg.Halt, log)
+		if err != nil {
+			return fmt.Errorf("initializing halt detector: %w", err)
+		}
 	}
 
 	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), haltDetector)
