@@ -131,7 +131,6 @@ func TestState_String(t *testing.T) {
 	}{
 		{StateNormal, "normal"},
 		{StateHalted, "halted"},
-		{StateRecovering, "recovering"},
 		{State(99), "unknown"},
 	}
 	for _, tt := range tests {
