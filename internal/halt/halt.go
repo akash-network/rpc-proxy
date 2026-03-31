@@ -105,7 +105,12 @@ func (d *Detector) check() {
 		return
 	}
 
-	staleDuration := time.Since(lastAdvanced)
+	// Measure staleness as the gap between the last successful probe and the last
+	// time the block height actually advanced. Using wall-clock time (time.Since)
+	// would cause false positives between infrequent probe cycles: both lastChecked
+	// and lastAdvanced grow stale at the same rate, so the threshold would always be
+	// hit ~30s after the last probe regardless of actual network state.
+	staleDuration := lastChecked.Sub(lastAdvanced)
 	halted := staleDuration >= d.threshold
 
 	d.mu.Lock()
@@ -151,10 +156,15 @@ func (d *Detector) IsHalted() bool {
 // HaltMessage returns a human-readable message describing the current halt status.
 func (d *Detector) HaltMessage() string {
 	lastAdvanced := d.blockManager.LastAdvancedAt()
+	lastChecked := d.blockManager.LastCheckedAt()
+	staleDuration := lastChecked.Sub(lastAdvanced)
+	if staleDuration < 0 {
+		staleDuration = 0
+	}
 	return fmt.Sprintf(
 		"network halt detected: no new blocks since %s (block height %d, stale for %s)",
 		lastAdvanced.UTC().Format(time.RFC3339),
 		d.blockManager.GetLatestBlock(),
-		time.Since(lastAdvanced).Truncate(time.Second),
+		staleDuration.Truncate(time.Second),
 	)
 }
