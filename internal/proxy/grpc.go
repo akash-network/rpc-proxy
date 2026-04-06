@@ -49,8 +49,9 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if p.haltDetector != nil && p.haltDetector.IsHalted() {
-		err := p.writeHaltResponse(w)
-		p.log.Error(fmt.Errorf("writing halt response: %w", err).Error())
+		if err := p.writeHaltResponse(w); err != nil {
+			p.log.Error(fmt.Errorf("writing halt response: %w", err).Error())
+		}
 		return
 	}
 
