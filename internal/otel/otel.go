@@ -30,7 +30,7 @@ func Init(ctx context.Context, cfg config.OTELConfig, fallbackServiceName string
 		serviceName = fallbackServiceName
 	}
 	if serviceName == "" {
-		serviceName = "akash-rpc-proxy"
+		serviceName = tracerName
 	}
 
 	res, err := resource.Merge(
@@ -88,6 +88,11 @@ func Init(ctx context.Context, cfg config.OTELConfig, fallbackServiceName string
 }
 
 // Tracer returns a named tracer for creating spans.
-func Tracer() trace.Tracer {
-	return otel.Tracer(tracerName)
+// If no name is provided, it defaults to tracerName.
+func Tracer(name ...string) trace.Tracer {
+	n := tracerName
+	if len(name) > 0 && name[0] != "" {
+		n = name[0]
+	}
+	return otel.Tracer(n)
 }
