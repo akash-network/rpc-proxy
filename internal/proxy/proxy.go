@@ -16,11 +16,14 @@ import (
 
 	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
+	proxyotel "github.com/akash-network/rpc-proxy/internal/otel"
 	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/seed"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Proxy struct {
@@ -191,7 +194,15 @@ func newRedirectFollowingReverseProxy(srv *Server, log *slog.Logger, proxyType s
 						return nil
 					}
 
-					redirectReq, err := http.NewRequestWithContext(response.Request.Context(), response.Request.Method, redirectURL.String(), nil)
+					ctx, span := proxyotel.Tracer().Start(response.Request.Context(), "proxy.redirect_follow",
+						trace.WithAttributes(
+							attribute.Int("redirect.status_code", response.StatusCode),
+							attribute.String("redirect.location", location),
+							attribute.String("redirect.resolved_url", redirectURL.String()),
+						))
+					defer span.End()
+
+					redirectReq, err := http.NewRequestWithContext(ctx, response.Request.Method, redirectURL.String(), nil)
 					if err != nil {
 						return fmt.Errorf("failed to create redirect request to %q: %w", redirectURL.String(), err)
 					}
