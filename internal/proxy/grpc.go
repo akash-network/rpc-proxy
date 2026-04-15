@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -78,7 +79,7 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Create the reverse proxy
 		proxy := httputil.ReverseProxy{
-			Transport: proxyotel.NewTracingTransport(http.DefaultTransport),
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
 			Director: func(request *http.Request) {
 				request.URL.Scheme = srv.Url.Scheme
 				request.URL.Opaque = srv.Url.Opaque
