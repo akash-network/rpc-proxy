@@ -1,0 +1,36 @@
+server:
+  listen: ":25567"
+  listen-grpc: ":25568"
+  grpc-tls: false
+
+seed:
+  chain-id: "akashnet-2"
+  refresh-interval: 5m
+  enable-remote: true
+
+health:
+  healthy-threshold: 10s
+  proxy-request-timeout: 15s
+
+halt:
+  enabled: true
+  threshold: 30s
+
+cors:
+  allow-origin: "*"
+  allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+  allow-headers: "Content-Type, Authorization, Traceparent, Baggage"
+
+metrics:
+  enabled: true
+  listen: ":4000"
+  path: "/metrics"
+  service-name: "rpc-proxy"
+
+otel:
+  enabled: true
+  exporter-type: grpc
+  endpoint: localhost:4317
+  insecure: true
+  service-name: "rpc-proxy"
+  sample-rate: 0.1

@@ -1,0 +1,93 @@
+package otel
+
+import (
+	"context"
+	"fmt"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/akash-network/rpc-proxy/internal/config"
+)
+
+const tracerName = "akash-rpc-proxy"
+
+// Init initializes the OpenTelemetry tracing pipeline. If cfg.Enabled is false,
+// it returns a no-op shutdown function and all tracing becomes zero-cost no-ops.
+func Init(ctx context.Context, cfg config.OTELConfig, fallbackServiceName string) (shutdown func(context.Context) error, err error) {
+	if !cfg.Enabled {
+		return func(context.Context) error { return nil }, nil
+	}
+
+	serviceName := cfg.ServiceName
+	if serviceName == "" {
+		serviceName = fallbackServiceName
+	}
+	if serviceName == "" {
+		serviceName = "akash-rpc-proxy"
+	}
+
+	res, err := resource.Merge(
+		resource.Default(),
+		resource.NewSchemaless(semconv.ServiceName(serviceName)),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating OTEL resource: %w", err)
+	}
+
+	var exporter sdktrace.SpanExporter
+	switch cfg.ExporterType {
+	case "http":
+		opts := []otlptracehttp.Option{}
+		if cfg.Endpoint != "" {
+			opts = append(opts, otlptracehttp.WithEndpoint(cfg.Endpoint))
+		}
+		if cfg.Insecure {
+			opts = append(opts, otlptracehttp.WithInsecure())
+		}
+		exporter, err = otlptracehttp.New(ctx, opts...)
+	default: // "grpc" or unset
+		opts := []otlptracegrpc.Option{}
+		if cfg.Endpoint != "" {
+			opts = append(opts, otlptracegrpc.WithEndpoint(cfg.Endpoint))
+		}
+		if cfg.Insecure {
+			opts = append(opts, otlptracegrpc.WithInsecure())
+		}
+		exporter, err = otlptracegrpc.New(ctx, opts...)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("creating OTEL exporter: %w", err)
+	}
+
+	sampleRate := cfg.SampleRate
+	if sampleRate <= 0 {
+		sampleRate = 1.0
+	}
+	sampler := sdktrace.ParentBased(sdktrace.TraceIDRatioBased(sampleRate))
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sampler),
+	)
+
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
+	return tp.Shutdown, nil
+}
+
+// Tracer returns a named tracer for creating spans.
+func Tracer() trace.Tracer {
+	return otel.Tracer(tracerName)
+}

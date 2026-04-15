@@ -16,6 +16,7 @@ import (
 
 	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
+	proxyotel "github.com/akash-network/rpc-proxy/internal/otel"
 	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
@@ -151,6 +152,7 @@ func (p *Proxy) Start(ctx context.Context, update Updater) {
 func newRedirectFollowingReverseProxy(srv *Server, log *slog.Logger, proxyType string) *httputil.ReverseProxy {
 	// Create a custom HTTP client that doesn't follow redirects automatically
 	redirectClient := &http.Client{
+		Transport: proxyotel.NewTracingTransport(http.DefaultTransport),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// Stop automatic redirect following
 			return http.ErrUseLastResponse
@@ -164,7 +166,7 @@ func newRedirectFollowingReverseProxy(srv *Server, log *slog.Logger, proxyType s
 			request.URL.Path = srv.Url.Path + request.URL.Path
 			request.Host = srv.Url.Host
 		},
-		Transport: http.DefaultTransport,
+		Transport: proxyotel.NewTracingTransport(http.DefaultTransport),
 		ModifyResponse: func(response *http.Response) error {
 			cors.DeleteCorsHeaders(response)
 

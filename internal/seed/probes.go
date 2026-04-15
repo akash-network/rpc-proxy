@@ -10,7 +10,12 @@ import (
 	"strconv"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/akash-network/rpc-proxy/internal/block"
+	proxyotel "github.com/akash-network/rpc-proxy/internal/otel"
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	"google.golang.org/grpc"
@@ -38,14 +43,22 @@ func (f ProbeFunc) Probe(ctx context.Context, node Node) (Status, error) {
 // RPCProbe probes an RPC Node.
 // It queries the Node status through RPC and tries to set the latest block height globally.
 func RPCProbe(ctx context.Context, node Node) (Status, error) {
+	ctx, span := proxyotel.Tracer().Start(ctx, "probe.rpc",
+		trace.WithAttributes(attribute.String("probe.address", node.Address)))
+	defer span.End()
+
 	start := time.Now()
 	client, err := rpchttp.New(node.Address, "/")
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return Status{}, fmt.Errorf("getting RPC client status: %w", err)
 	}
 
 	status, err := client.Status(ctx)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return Status{}, fmt.Errorf("getting RPC client status: %w", err)
 	}
 
@@ -63,6 +76,10 @@ func RPCProbe(ctx context.Context, node Node) (Status, error) {
 // It checks if the node is catching up, queries the Node status through gRPC and tries to set the latest block
 // height globally.
 func GRPCProbe(ctx context.Context, node Node) (Status, error) {
+	ctx, span := proxyotel.Tracer().Start(ctx, "probe.grpc",
+		trace.WithAttributes(attribute.String("probe.address", node.Address)))
+	defer span.End()
+
 	start := time.Now()
 	creds := credentials.NewTLS(&tls.Config{
 		InsecureSkipVerify: false,
@@ -70,6 +87,8 @@ func GRPCProbe(ctx context.Context, node Node) (Status, error) {
 
 	conn, err := grpc.NewClient(node.Address, grpc.WithTransportCredentials(creds), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1024*1024*10)))
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return Status{}, fmt.Errorf("creating gRPC client: %w", err)
 	}
 	defer conn.Close()
@@ -81,11 +100,15 @@ func GRPCProbe(ctx context.Context, node Node) (Status, error) {
 
 	catchingUp, err := serviceClient.GetSyncing(ctx, &cmtservice.GetSyncingRequest{})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return Status{}, fmt.Errorf("getting gRPC client sync: %w", err)
 	}
 
 	latestBlock, err := serviceClient.GetLatestBlock(ctx, &cmtservice.GetLatestBlockRequest{})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return Status{}, fmt.Errorf("getting gRPC client latest block: %w", err)
 	}
 
@@ -114,7 +137,17 @@ type latestBlockResponse struct {
 // RESTProbe probes a REST Node.
 // It checks if the node is catching up querying the REST endpoint, queries the Node latest block and tries to set the
 // height globally.
-func RESTProbe(ctx context.Context, node Node) (Status, error) {
+func RESTProbe(ctx context.Context, node Node) (s Status, retErr error) {
+	ctx, span := proxyotel.Tracer().Start(ctx, "probe.rest",
+		trace.WithAttributes(attribute.String("probe.address", node.Address)))
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		}
+		span.End()
+	}()
+
 	start := time.Now()
 	client := &http.Client{}
 

@@ -7,8 +7,12 @@ import (
 	"net/http"
 	"net/http/httputil"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
+	proxyotel "github.com/akash-network/rpc-proxy/internal/otel"
 
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
@@ -55,10 +59,26 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if srv := p.lb.NextServer(r); srv != nil {
+	ctx, span := proxyotel.Tracer().Start(r.Context(), "lb.select_backend",
+		trace.WithAttributes(attribute.String("proxy.type", "grpc")))
+	r = r.WithContext(ctx)
+	srv := p.lb.NextServer(r)
+	if srv != nil {
+		span.SetAttributes(attribute.String("proxy.backend", srv.Url.String()))
+	}
+	span.End()
+
+	if srv != nil {
+		fwdCtx, fwdSpan := proxyotel.Tracer().Start(r.Context(), "proxy.forward",
+			trace.WithAttributes(
+				attribute.String("proxy.type", "grpc"),
+				attribute.String("proxy.backend", srv.Url.String()),
+			))
+		r = r.WithContext(fwdCtx)
 
 		// Create the reverse proxy
 		proxy := httputil.ReverseProxy{
+			Transport: proxyotel.NewTracingTransport(http.DefaultTransport),
 			Director: func(request *http.Request) {
 				request.URL.Scheme = srv.Url.Scheme
 				request.URL.Opaque = srv.Url.Opaque
@@ -82,6 +102,7 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.log.Info("serving request", "target", srv.Url, "source", r.URL)
 
 		proxy.ServeHTTP(w, r)
+		fwdSpan.End()
 		metrics.IncrementRequestCount("grpc", srv.Url.String())
 		return
 	}
