@@ -142,14 +142,7 @@ func runProxy(cfg config.Config) error {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	// Initialize OpenTelemetry tracing
-	otelServiceName := cfg.OTEL.ServiceName
-	if otelServiceName == "" {
-		otelServiceName = cfg.Metrics.ServiceName
-	}
-	if otelServiceName == "" {
-		otelServiceName = os.Getenv("HOSTNAME")
-	}
-	otelShutdown, err := proxyotel.Init(context.Background(), cfg.OTEL, otelServiceName)
+	otelShutdown, err := proxyotel.Init(context.Background(), cfg.OTEL, cfg.Metrics.ServiceName)
 	if err != nil {
 		return fmt.Errorf("initializing OpenTelemetry: %w", err)
 	}

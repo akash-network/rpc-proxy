@@ -3,6 +3,7 @@ package otel
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -19,15 +20,23 @@ import (
 const tracerName = "akash-rpc-proxy"
 
 // Init initializes the OpenTelemetry tracing pipeline. If cfg.Enabled is false,
-// it returns a no-op shutdown function and all tracing becomes zero-cost no-ops.
+// it returns a no-op shutdown function. If OTEL is enabled but no endpoint is
+// configured, it returns an error since the caller likely misconfigured OTEL.
 func Init(ctx context.Context, cfg config.OTELConfig, fallbackServiceName string) (shutdown func(context.Context) error, err error) {
 	if !cfg.Enabled {
 		return func(context.Context) error { return nil }, nil
 	}
 
+	if cfg.Endpoint == "" {
+		return nil, fmt.Errorf("OTEL is enabled but no endpoint is configured")
+	}
+
 	serviceName := cfg.ServiceName
 	if serviceName == "" {
 		serviceName = fallbackServiceName
+	}
+	if serviceName == "" {
+		serviceName = os.Getenv("HOSTNAME")
 	}
 	if serviceName == "" {
 		serviceName = tracerName
@@ -44,18 +53,16 @@ func Init(ctx context.Context, cfg config.OTELConfig, fallbackServiceName string
 	var exporter sdktrace.SpanExporter
 	switch cfg.ExporterType {
 	case "http":
-		opts := []otlptracehttp.Option{}
-		if cfg.Endpoint != "" {
-			opts = append(opts, otlptracehttp.WithEndpoint(cfg.Endpoint))
+		opts := []otlptracehttp.Option{
+			otlptracehttp.WithEndpoint(cfg.Endpoint),
 		}
 		if cfg.Insecure {
 			opts = append(opts, otlptracehttp.WithInsecure())
 		}
 		exporter, err = otlptracehttp.New(ctx, opts...)
 	default: // "grpc" or unset
-		opts := []otlptracegrpc.Option{}
-		if cfg.Endpoint != "" {
-			opts = append(opts, otlptracegrpc.WithEndpoint(cfg.Endpoint))
+		opts := []otlptracegrpc.Option{
+			otlptracegrpc.WithEndpoint(cfg.Endpoint),
 		}
 		if cfg.Insecure {
 			opts = append(opts, otlptracegrpc.WithInsecure())
@@ -68,7 +75,7 @@ func Init(ctx context.Context, cfg config.OTELConfig, fallbackServiceName string
 
 	sampleRate := cfg.SampleRate
 	if sampleRate <= 0 {
-		sampleRate = 1.0
+		sampleRate = 0
 	}
 	sampler := sdktrace.ParentBased(sdktrace.TraceIDRatioBased(sampleRate))
 
