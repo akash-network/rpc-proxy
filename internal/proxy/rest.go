@@ -6,9 +6,13 @@ import (
 	"net/http"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
+	proxyotel "github.com/akash-network/rpc-proxy/internal/otel"
 	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
@@ -55,9 +59,25 @@ func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, "/rest")
-	if srv := p.lb.NextServer(r); srv != nil {
+
+	ctx, span := proxyotel.Tracer().Start(r.Context(), "lb.select_backend",
+		trace.WithAttributes(attribute.String("proxy.type", "rest")))
+	r = r.WithContext(ctx)
+	srv := p.lb.NextServer(r)
+	if srv != nil {
+		span.SetAttributes(attribute.String("proxy.backend", srv.Url.String()))
+	}
+	span.End()
+
+	if srv != nil {
+		fwdCtx, fwdSpan := proxyotel.Tracer().Start(r.Context(), "proxy.forward",
+			trace.WithAttributes(
+				attribute.String("proxy.type", "rest"),
+				attribute.String("proxy.backend", srv.Url.String()),
+			))
 		proxy := newRedirectFollowingReverseProxy(srv, p.log, "rest")
-		proxy.ServeHTTP(w, r)
+		proxy.ServeHTTP(w, r.WithContext(fwdCtx))
+		fwdSpan.End()
 		metrics.IncrementRequestCount("rest", srv.Url.String())
 		return
 	}

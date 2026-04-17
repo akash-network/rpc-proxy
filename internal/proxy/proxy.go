@@ -16,10 +16,14 @@ import (
 
 	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
+	proxyotel "github.com/akash-network/rpc-proxy/internal/otel"
 	"github.com/akash-network/rpc-proxy/internal/proxy/cors"
 
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/seed"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Proxy struct {
@@ -151,6 +155,7 @@ func (p *Proxy) Start(ctx context.Context, update Updater) {
 func newRedirectFollowingReverseProxy(srv *Server, log *slog.Logger, proxyType string) *httputil.ReverseProxy {
 	// Create a custom HTTP client that doesn't follow redirects automatically
 	redirectClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// Stop automatic redirect following
 			return http.ErrUseLastResponse
@@ -164,7 +169,7 @@ func newRedirectFollowingReverseProxy(srv *Server, log *slog.Logger, proxyType s
 			request.URL.Path = srv.Url.Path + request.URL.Path
 			request.Host = srv.Url.Host
 		},
-		Transport: http.DefaultTransport,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
 		ModifyResponse: func(response *http.Response) error {
 			cors.DeleteCorsHeaders(response)
 
@@ -189,7 +194,15 @@ func newRedirectFollowingReverseProxy(srv *Server, log *slog.Logger, proxyType s
 						return nil
 					}
 
-					redirectReq, err := http.NewRequestWithContext(response.Request.Context(), response.Request.Method, redirectURL.String(), nil)
+					ctx, span := proxyotel.Tracer().Start(response.Request.Context(), "proxy.redirect_follow",
+						trace.WithAttributes(
+							attribute.Int("redirect.status_code", response.StatusCode),
+							attribute.String("redirect.location", location),
+							attribute.String("redirect.resolved_url", redirectURL.String()),
+						))
+					defer span.End()
+
+					redirectReq, err := http.NewRequestWithContext(ctx, response.Request.Method, redirectURL.String(), nil)
 					if err != nil {
 						return fmt.Errorf("failed to create redirect request to %q: %w", redirectURL.String(), err)
 					}

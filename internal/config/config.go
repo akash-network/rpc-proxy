@@ -69,6 +69,15 @@ type MetricsConfig struct {
 	ServiceName string `mapstructure:"service-name"`
 }
 
+type OTELConfig struct {
+	Enabled      bool    `mapstructure:"enabled"`
+	ExporterType string  `mapstructure:"exporter-type"`
+	Endpoint     string  `mapstructure:"endpoint"`
+	Insecure     bool    `mapstructure:"insecure"`
+	ServiceName  string  `mapstructure:"service-name"`
+	SampleRate   float64 `mapstructure:"sample-rate"`
+}
+
 type Config struct {
 	Server  ServerConfig  `mapstructure:"server"`
 	TLS     TLSConfig     `mapstructure:"tls"`
@@ -77,6 +86,7 @@ type Config struct {
 	Halt    HaltConfig    `mapstructure:"halt"`
 	CORS    CORSConfig    `mapstructure:"cors"`
 	Metrics MetricsConfig `mapstructure:"metrics"`
+	OTEL    OTELConfig    `mapstructure:"otel"`
 }
 
 // Read returns the configuration from viper.Viper. Returns error if unable to unmarshal.

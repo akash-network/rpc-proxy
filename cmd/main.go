@@ -23,10 +23,13 @@ import (
 	"golang.org/x/net/http2/h2c"
 	"golang.org/x/sync/errgroup"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/akash-network/rpc-proxy/internal/block"
 	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
+	proxyotel "github.com/akash-network/rpc-proxy/internal/otel"
 	"github.com/akash-network/rpc-proxy/internal/proxy"
 	"github.com/akash-network/rpc-proxy/internal/seed"
 	"github.com/spf13/cobra"
@@ -121,6 +124,14 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	rootCmd.PersistentFlags().String("metrics.path", "/metrics", "Path to expose metrics on")
 	rootCmd.PersistentFlags().String("metrics.service-name", "", "Service name for metrics labeling (defaults to HOSTNAME env var)")
 
+	// OpenTelemetry configuration
+	rootCmd.PersistentFlags().Bool("otel.enabled", false, "Enable OpenTelemetry tracing")
+	rootCmd.PersistentFlags().String("otel.exporter-type", "grpc", "OTLP exporter type (grpc or http)")
+	rootCmd.PersistentFlags().String("otel.endpoint", "", "OTLP collector endpoint")
+	rootCmd.PersistentFlags().Bool("otel.insecure", false, "Use insecure connection to OTLP collector")
+	rootCmd.PersistentFlags().String("otel.service-name", "", "Service name for tracing (defaults to metrics service name or HOSTNAME)")
+	rootCmd.PersistentFlags().Float64("otel.sample-rate", 0.1, "Trace sampling rate (0.0 to 1.0, e.g. 0.1 = 10%)")
+
 	// Configuration file support
 	rootCmd.PersistentFlags().StringP("config", "c", "", "config file (default is $HOME/.akash-proxy/config.yaml)")
 
@@ -129,6 +140,13 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 
 func runProxy(cfg config.Config) error {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	// Initialize OpenTelemetry tracing
+	otelShutdown, err := proxyotel.Init(context.Background(), cfg.OTEL, cfg.Metrics.ServiceName)
+	if err != nil {
+		return fmt.Errorf("initializing OpenTelemetry: %w", err)
+	}
+	defer otelShutdown(context.Background())
 
 	var metricsServer *http.Server
 	if cfg.Metrics.Enabled {
@@ -174,7 +192,6 @@ func runProxy(cfg config.Config) error {
 	blockTime := 6 * time.Second
 
 	var haltDetector *halt.Detector
-	var err error
 	if cfg.Halt.Enabled {
 		haltDetector, err = newHaltDetector(cfg.Halt, log)
 		if err != nil {
@@ -362,7 +379,7 @@ func prepareRestAndRPCServer(log *slog.Logger, cfg config.Config, rpcProxyHandle
 
 	srv := &http.Server{
 		Addr:         cfg.Server.Listen,
-		Handler:      cors.WithCorsMiddleware(corsHeaders, m),
+		Handler:      otelhttp.NewHandler(cors.WithCorsMiddleware(corsHeaders, m), "akash-proxy"),
 		TLSConfig:    am.TLSConfig(),
 		ReadTimeout:  cfg.Server.Timeouts.Read,
 		IdleTimeout:  cfg.Server.Timeouts.Idle,
@@ -384,7 +401,7 @@ func prepareGRPCServer(log *slog.Logger, cfg config.Config, p *proxy.GRPCProxy) 
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/", cors.WithCorsMiddleware(corsHeaders, p))
+	mux.Handle("/", otelhttp.NewHandler(cors.WithCorsMiddleware(corsHeaders, p), "akash-proxy-grpc"))
 
 	// Start HTTP/2.0 server.
 	grpcServer := &http.Server{
