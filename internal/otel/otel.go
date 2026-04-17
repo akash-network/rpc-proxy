@@ -60,7 +60,7 @@ func Init(ctx context.Context, cfg config.OTELConfig, fallbackServiceName string
 			opts = append(opts, otlptracehttp.WithInsecure())
 		}
 		exporter, err = otlptracehttp.New(ctx, opts...)
-	default: // "grpc" or unset
+	case "grpc":
 		opts := []otlptracegrpc.Option{
 			otlptracegrpc.WithEndpoint(cfg.Endpoint),
 		}
@@ -68,6 +68,8 @@ func Init(ctx context.Context, cfg config.OTELConfig, fallbackServiceName string
 			opts = append(opts, otlptracegrpc.WithInsecure())
 		}
 		exporter, err = otlptracegrpc.New(ctx, opts...)
+	default:
+		return nil, fmt.Errorf("unknown OTEL exporter type: %q (expected \"http\" or \"grpc\")", cfg.ExporterType)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("creating OTEL exporter: %w", err)
