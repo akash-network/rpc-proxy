@@ -70,6 +70,14 @@ func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	span.End()
 
 	if srv != nil {
+		// Buffer the body so the transport can replay it if the upstream sends
+		// a GOAWAY mid-request. GETs have no body, so this is a no-op for them.
+		if err := enableRetry(r); err != nil {
+			p.log.Error("could not buffer request body", "error", err)
+			http.Error(w, "could not read request", http.StatusBadRequest)
+			return
+		}
+
 		fwdCtx, fwdSpan := proxyotel.Tracer().Start(r.Context(), "proxy.forward",
 			trace.WithAttributes(
 				attribute.String("proxy.type", "rest"),

@@ -1,9 +1,11 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
@@ -287,4 +289,52 @@ func copyHeaders(src, dst http.Header) {
 			}
 		}
 	}
+}
+
+// maxBufferedBody caps how much of a request body we buffer to enable
+// transparent retries (1 MiB). JSON-RPC / REST payloads (including tx
+// broadcasts) are tiny; anything larger falls back to the streaming,
+// non-retryable path.
+const maxBufferedBody = 1024 * 1024
+
+// enableRetry buffers r.Body and installs r.GetBody so the reverse proxy's
+// transport can rewind and replay the request.
+//
+// Inbound server requests never carry a GetBody, and httputil.ReverseProxy
+// clones the request without inventing one. Without GetBody, Go's HTTP/2
+// transport cannot retry a request whose body was already written when the
+// upstream sends a GOAWAY (graceful connection drain), so it surfaces a 500
+// ("could not proxy request"). Supplying GetBody lets the transport retry the
+// request on a fresh connection.
+//
+// The retry is safe even for non-idempotent broadcasts: the HTTP/2 transport
+// only replays a GOAWAY'd request when the stream sat above the frame's
+// LastStreamID, i.e. the server guaranteed it never began processing it.
+func enableRetry(r *http.Request) error {
+	if r.Body == nil || r.Body == http.NoBody || r.GetBody != nil {
+		return nil
+	}
+	// Skip bodies we know up front are too large to buffer safely.
+	if r.ContentLength > maxBufferedBody {
+		return nil
+	}
+
+	buf, err := io.ReadAll(io.LimitReader(r.Body, maxBufferedBody+1))
+	if err != nil {
+		return err
+	}
+	if int64(len(buf)) > maxBufferedBody {
+		// Body exceeds the cap (its length was unknown). Restore an equivalent
+		// stream (buffered head + untouched tail) without enabling retry.
+		r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(buf), r.Body))
+		return nil
+	}
+
+	_ = r.Body.Close()
+	r.ContentLength = int64(len(buf))
+	r.Body = io.NopCloser(bytes.NewReader(buf))
+	r.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(buf)), nil
+	}
+	return nil
 }
