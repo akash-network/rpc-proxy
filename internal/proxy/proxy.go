@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -98,6 +99,7 @@ func (p *Proxy) doUpdate(providers []seed.Node) error {
 				target,
 				p.log.With("server_address", provider.Address),
 				provider,
+				newBreaker(p.cfg.EjectionThreshold, p.cfg.EjectionCooldown),
 			)
 			if err != nil {
 				return err
@@ -173,6 +175,7 @@ func newRedirectFollowingReverseProxy(srv *Server, log *slog.Logger, proxyType s
 		},
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 		ModifyResponse: func(response *http.Response) error {
+			srv.recordSuccess()
 			cors.DeleteCorsHeaders(response)
 
 			metrics.IncrementRequestStatusCount(proxyType, srv.Url.String(), response.StatusCode)
@@ -238,6 +241,12 @@ func newRedirectFollowingReverseProxy(srv *Server, log *slog.Logger, proxyType s
 			return nil
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
+			// A client hangup cancels the request context. That is not the peer's
+			// fault, so it must not count toward ejection.
+			if !errors.Is(err, context.Canceled) {
+				srv.recordFailure()
+				metrics.IncrementUpstreamError(proxyType, srv.Url.String())
+			}
 			log.Error("reverse proxy error", "error", err)
 			http.Error(writer, "could not proxy request", http.StatusInternalServerError)
 		},

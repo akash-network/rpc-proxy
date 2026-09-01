@@ -108,6 +108,8 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	// Health configuration
 	rootCmd.PersistentFlags().Duration("health.healthy-threshold", 10*time.Second, "Response time threshold for healthy nodes")
 	rootCmd.PersistentFlags().Duration("health.proxy-request-timeout", 15*time.Second, "Timeout for proxied requests")
+	rootCmd.PersistentFlags().Int("health.ejection-threshold", 5, "Consecutive upstream transport failures before a peer is ejected (0 disables)")
+	rootCmd.PersistentFlags().Duration("health.ejection-cooldown", 30*time.Second, "How long an ejected peer stays out of rotation before it is eligible again")
 
 	// Halt detection configuration
 	rootCmd.PersistentFlags().Bool("halt.enabled", true, "Enable network halt detection circuit breaker")

@@ -46,21 +46,23 @@ func NewRoundRobin(log *slog.Logger) *RoundRobin {
 }
 
 // NextServer returns the next server to be used based on the round-robin algorithm.
-// If the selected server is unhealthy, it will recursively try the next server.
+// It skips unhealthy servers and returns nil when none are healthy.
 func (rr *RoundRobin) NextServer(r *http.Request) *Server {
 	rr.mu.Lock()
-	if len(rr.servers) == 0 {
+	defer rr.mu.Unlock()
+	n := len(rr.servers)
+	if n == 0 {
 		return nil
 	}
-	server := rr.servers[rr.round%len(rr.servers)]
-
-	rr.round++
-	rr.mu.Unlock()
-	if server.Healthy() {
-		return server
+	for i := 0; i < n; i++ {
+		server := rr.servers[rr.round%n]
+		rr.round++
+		if server.Healthy() {
+			return server
+		}
+		rr.log.Warn("server is unhealthy, trying next", "name", server.name)
 	}
-	rr.log.Warn("server is unhealthy, trying next", "name", server.name)
-	return rr.NextServer(r)
+	return nil
 }
 
 // Update updates the list of available servers.
@@ -112,26 +114,32 @@ func (rr *LatencyBased) NextServer(_ *http.Request) *Server {
 	rr.mu.Lock()
 	defer rr.mu.Unlock()
 
-	// Return nil if no servers are available
-	if len(rr.servers) == 0 {
+	// Select only from healthy servers so an ejected peer stops receiving traffic
+	// immediately, without waiting for the next seed refresh.
+	var total float64
+	healthy := rr.servers[:0:0]
+	for _, s := range rr.servers {
+		if s.Healthy() {
+			healthy = append(healthy, s)
+			total += s.Rate
+		}
+	}
+
+	if len(healthy) == 0 {
 		return nil
 	}
 
-	r := rr.randomizer.Float64()
+	r := rr.randomizer.Float64() * total
 	cumulative := 0.0
-
-	for _, s := range rr.servers {
+	for _, s := range healthy {
 		cumulative += s.Rate
 		if r <= cumulative {
 			return s.Server
 		}
 	}
 
-	// Fallback, shouldn't be reached if rates are normalized
-	if len(rr.servers) > 0 {
-		return rr.servers[len(rr.servers)-1].Server
-	}
-	return nil
+	// Fallback for floating-point drift at the top of the range.
+	return healthy[len(healthy)-1].Server
 }
 
 // Update updates the list of available servers and their corresponding rates
@@ -187,9 +195,18 @@ type StickyLatencyBased struct {
 	sessionTimestamps map[string]time.Time
 }
 
+const defaultSessionCleanupInterval = 5 * time.Minute
+
 // NewStickyLatencyBased returns a new StickyLatencyBased load balancer instance.
 // It embeds a LatencyBased load balancer and adds session management functionality.
 func NewStickyLatencyBased(log *slog.Logger, sessionTimeout time.Duration) *StickyLatencyBased {
+	return newStickyLatencyBased(log, sessionTimeout, defaultSessionCleanupInterval)
+}
+
+// newStickyLatencyBased builds the balancer with an explicit cleanup interval so
+// tests can sweep faster without racing the already-running cleanup goroutine by
+// swapping the ticker after construction.
+func newStickyLatencyBased(log *slog.Logger, sessionTimeout, cleanupInterval time.Duration) *StickyLatencyBased {
 	if sessionTimeout == 0 {
 		sessionTimeout = 30 * time.Minute // Default session timeout
 	}
@@ -201,7 +218,7 @@ func NewStickyLatencyBased(log *slog.Logger, sessionTimeout time.Duration) *Stic
 		sessionTimeout:    sessionTimeout,
 	}
 
-	slb.sessionCleanupTicker = time.NewTicker(5 * time.Minute)
+	slb.sessionCleanupTicker = time.NewTicker(cleanupInterval)
 	go slb.cleanupExpiredSessions()
 
 	return slb

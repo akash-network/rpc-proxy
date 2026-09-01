@@ -75,6 +75,14 @@ var RequestStatusCount *prometheus.CounterVec
 // Value is 1 if healthy, 0 if unhealthy
 var NodeHealth *prometheus.GaugeVec
 
+// UpstreamErrors is a counter that tracks upstream transport failures per node.
+// These are requests that never received a response from the peer (reset streams,
+// dial timeouts, exceeded proxy-request-timeout), as opposed to responses with an
+// error status. It has the following labels:
+//   - type: The type of request (rest/rpc/grpc)
+//   - node: The node that failed
+var UpstreamErrors *prometheus.CounterVec
+
 func init() {
 	customRegistry = prometheus.NewRegistry()
 
@@ -110,10 +118,19 @@ func init() {
 		[]string{"type", "node"},
 	)
 
+	UpstreamErrors = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "proxy_upstream_error_count",
+			Help: "Number of upstream transport failures per node",
+		},
+		[]string{"type", "node"},
+	)
+
 	customRegistry.MustRegister(NodeCounts)
 	customRegistry.MustRegister(RequestCount)
 	customRegistry.MustRegister(RequestStatusCount)
 	customRegistry.MustRegister(NodeHealth)
+	customRegistry.MustRegister(UpstreamErrors)
 }
 
 // SetServiceName sets the global service name for all metrics.
@@ -136,6 +153,11 @@ func IncrementRequestCount(requestType, node string) {
 // IncrementRequestStatusCount increments the request count for a specific type, node, and status code.
 func IncrementRequestStatusCount(requestType, node string, statusCode int) {
 	RequestStatusCount.WithLabelValues(requestType, node, strconv.Itoa(statusCode)).Inc()
+}
+
+// IncrementUpstreamError increments the upstream transport failure count for a specific type and node.
+func IncrementUpstreamError(requestType, node string) {
+	UpstreamErrors.WithLabelValues(requestType, node).Inc()
 }
 
 // UpdateNodeHealth updates the health status for a specific node.

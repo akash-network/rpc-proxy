@@ -83,6 +83,11 @@ func (p *RestProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				attribute.String("proxy.type", "rest"),
 				attribute.String("proxy.backend", srv.Url.String()),
 			))
+		if p.cfg.ProxyRequestTimeout > 0 {
+			var cancel context.CancelFunc
+			fwdCtx, cancel = context.WithTimeout(fwdCtx, p.cfg.ProxyRequestTimeout)
+			defer cancel()
+		}
 		proxy := newRedirectFollowingReverseProxy(srv, p.log, "rest")
 		proxy.ServeHTTP(w, r.WithContext(fwdCtx))
 		fwdSpan.End()

@@ -207,8 +207,8 @@ func TestNewReverseProxy(t *testing.T) {
 
 func TestReverseProxy_ModifyResponse(t *testing.T) {
 	targetURL, _ := url.Parse("http://node.com")
-	srv := &Server{Url: targetURL}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv, _ := newServer("node", targetURL, logger, seed.Node{}, newBreaker(0, 0))
 	proxy := newRedirectFollowingReverseProxy(srv, logger, "rest")
 
 	resp := &http.Response{Header: make(http.Header)}
@@ -226,8 +226,8 @@ func TestReverseProxy_ModifyResponse(t *testing.T) {
 
 func TestReverseProxy_ErrorHandler(t *testing.T) {
 	targetURL, _ := url.Parse("http://node.com")
-	srv := &Server{Url: targetURL}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv, _ := newServer("node", targetURL, logger, seed.Node{}, newBreaker(0, 0))
 	proxy := newRedirectFollowingReverseProxy(srv, logger, "rest")
 
 	w := httptest.NewRecorder()
