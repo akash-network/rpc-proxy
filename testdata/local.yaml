@@ -26,6 +26,8 @@ seed:
 health:
   healthy-threshold: "10s"
   proxy-request-timeout: "15s"
+  ejection-threshold: 5
+  ejection-cooldown: "30s"
 
 cors:
   allow-origin: "*"

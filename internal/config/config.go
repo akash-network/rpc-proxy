@@ -49,6 +49,12 @@ type SeedConfig struct {
 type HealthConfig struct {
 	HealthyThreshold    time.Duration `mapstructure:"healthy-threshold"`
 	ProxyRequestTimeout time.Duration `mapstructure:"proxy-request-timeout"`
+	// EjectionThreshold is the number of consecutive upstream transport failures that
+	// eject a peer from rotation. Zero or negative disables ejection.
+	EjectionThreshold int `mapstructure:"ejection-threshold"`
+	// EjectionCooldown is how long an ejected peer stays out of rotation before it
+	// becomes eligible again, subject to the seed probe still reporting it healthy.
+	EjectionCooldown time.Duration `mapstructure:"ejection-cooldown"`
 }
 
 type HaltConfig struct {
