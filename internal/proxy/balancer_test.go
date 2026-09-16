@@ -79,6 +79,21 @@ func TestRoundRobin_NextServer(t *testing.T) {
 	}
 }
 
+func TestRoundRobin_AllUnhealthyReturnsNil(t *testing.T) {
+	unhealthy := func(name string) *Server {
+		return &Server{
+			name:  name,
+			pings: avg.Moving(1),
+			node:  seed.Node{Status: seed.Status{Reachable: false}},
+		}
+	}
+	lb := NewRoundRobin(slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	lb.Update([]*Server{unhealthy("a"), unhealthy("b")})
+	if s := lb.NextServer(nil); s != nil {
+		t.Fatalf("expected nil when all peers are unhealthy, got %s", s.name)
+	}
+}
+
 func TestLatencyBased_NextServer_EmptyServers(t *testing.T) {
 	lb := NewLatencyBased(slog.New(slog.NewTextHandler(os.Stdout, nil)))
 	lb.Update([]*Server{})
@@ -300,14 +315,9 @@ func TestStickyLatencyBased_SessionTimeout(t *testing.T) {
 		createTestServer("server2", 20*time.Millisecond),
 	}
 
-	// Short session timeout for testing
-	lb := NewStickyLatencyBased(slog.New(slog.NewTextHandler(os.Stdout, nil)), 50*time.Millisecond)
+	// Short session timeout and a fast cleanup sweep for testing.
+	lb := newStickyLatencyBased(slog.New(slog.NewTextHandler(os.Stdout, nil)), 50*time.Millisecond, 25*time.Millisecond)
 	defer lb.Stop()
-
-	// Override the cleanup ticker with a faster one for testing
-	lb.sessionCleanupTicker.Stop()
-	lb.sessionCleanupTicker = time.NewTicker(25 * time.Millisecond)
-	go lb.cleanupExpiredSessions()
 
 	lb.Update(servers)
 

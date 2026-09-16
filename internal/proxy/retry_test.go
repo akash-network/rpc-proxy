@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/akash-network/rpc-proxy/internal/seed"
 )
 
 const testBody = `{"jsonrpc":"2.0","method":"broadcast_tx_sync","params":["deadbeef"],"id":1}`
@@ -189,8 +191,8 @@ func TestEnableRetry_ForwardsBodyIntact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse backend URL: %v", err)
 	}
-	srv := &Server{Url: targetURL}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv, _ := newServer("backend", targetURL, logger, seed.Node{}, newBreaker(0, 0))
 	proxy := newRedirectFollowingReverseProxy(srv, logger, "rpc")
 
 	r := serverReq(t, testBody)

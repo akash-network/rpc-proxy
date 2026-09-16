@@ -21,6 +21,8 @@ Flags:
       --cors.allow-headers string               CORS allowed headers (default "Content-Type, Authorization")
       --cors.allow-methods string               CORS allowed methods (default "GET, POST, PUT, DELETE, OPTIONS")
       --cors.allow-origin string                CORS allowed origin (default "*")
+      --health.ejection-cooldown duration       How long an ejected peer stays out of rotation before it is eligible again (default 30s)
+      --health.ejection-threshold int           Consecutive upstream transport failures before a peer is ejected, 0 disables (default 5)
       --health.healthy-threshold duration       Response time threshold for healthy nodes (default 10s)
       --health.proxy-request-timeout duration   Timeout for proxied requests (default 15s)
   -h, --help                                    help for akash-proxy

@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -91,11 +92,16 @@ func (p *GRPCProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				request.Host = srv.Url.Host // This is very important otherwise a 421 is returned.
 			},
 			ModifyResponse: func(response *http.Response) error {
+				srv.recordSuccess()
 				p.log.Info("modifying response", "response", response.StatusCode)
 				response.Header.Set("Content-Type", "application/grpc")
 				return nil
 			},
 			ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
+				if !errors.Is(err, context.Canceled) {
+					srv.recordFailure()
+					metrics.IncrementUpstreamError("grpc", srv.Url.String())
+				}
 				p.log.Error("proxy error", "error", err)
 			},
 		}
