@@ -191,8 +191,6 @@ func runProxy(cfg config.Config) error {
 	}
 	seeder := seed.New(seederCfg, log, rpcListener, restListener, grpcListener)
 
-	blockTime := 6 * time.Second
-
 	var haltDetector *halt.Detector
 	if cfg.Halt.Enabled {
 		haltDetector, err = newHaltDetector(cfg.Halt, log)
@@ -201,9 +199,9 @@ func runProxy(cfg config.Config) error {
 		}
 	}
 
-	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), haltDetector)
-	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), nil)
-	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log, blockTime), nil)
+	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log), haltDetector)
+	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log), nil)
+	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log), nil)
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
