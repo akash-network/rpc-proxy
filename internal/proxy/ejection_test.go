@@ -60,7 +60,7 @@ func TestEjectsPeerOnConsecutiveTransportFailures(t *testing.T) {
 		ProxyRequestTimeout: time.Second,
 		EjectionThreshold:   5,
 		EjectionCooldown:    time.Minute,
-	}, logger, NewStickyLatencyBased(logger, time.Minute), nil)
+	}, logger, NewStickyLatencyBased(logger), nil)
 	proxy.Start(ctx)
 
 	ch <- seed.Seed{APIs: seed.Apis{RPC: []seed.Node{
@@ -120,7 +120,7 @@ func TestProxyRequestTimeoutCutsStalledUpstream(t *testing.T) {
 	ch := make(chan seed.Seed, 1)
 	proxy := NewRPCProxy(ch, config.HealthConfig{
 		ProxyRequestTimeout: 200 * time.Millisecond,
-	}, logger, NewStickyLatencyBased(logger, time.Minute), nil)
+	}, logger, NewStickyLatencyBased(logger), nil)
 	proxy.Start(ctx)
 
 	ch <- seed.Seed{APIs: seed.Apis{RPC: []seed.Node{healthyNode("stalled", stalled.URL)}}}
