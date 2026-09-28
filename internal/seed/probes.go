@@ -22,6 +22,14 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
+// probeTimeout caps how long a single node probe can run. Probes currently run
+// serially, so an untimed probe against a hanging node would stall the whole
+// sweep. It is kept below the default health-refresh interval so one stalled node
+// does not blow the fast cadence. Residual skew from serial sampling (early nodes
+// report older heights than the tip set by late ones) is absorbed by the freshness
+// tolerance; a concurrent-probe follow-up removes it for larger pools.
+const probeTimeout = 4 * time.Second
+
 // Probe is the interface that wraps the Probe method.
 //
 // Probe probes the given node for health.
@@ -47,6 +55,9 @@ func RPCProbe(ctx context.Context, node Node) (Status, error) {
 		trace.WithAttributes(attribute.String("probe.address", node.Address)))
 	defer span.End()
 
+	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+
 	start := time.Now()
 	client, err := rpchttp.New(node.Address, "/")
 	if err != nil {
@@ -62,13 +73,15 @@ func RPCProbe(ctx context.Context, node Node) (Status, error) {
 		return Status{}, fmt.Errorf("getting RPC client status: %w", err)
 	}
 
-	errLowBlock := block.GetInstance().SetLatestBlock(status.SyncInfo.LatestBlockHeight)
+	// SetLatestBlock feeds the halt detector's global head. The routing freshness
+	// verdict is computed later in the proxy from Height against the pool tip.
+	_ = block.GetInstance().SetLatestBlock(status.SyncInfo.LatestBlockHeight)
 
 	return Status{
-		CatchingUp:    status.SyncInfo.CatchingUp,
-		Reachable:     true,
-		IsLatestBlock: errLowBlock == nil,
-		Latency:       time.Since(start),
+		CatchingUp: status.SyncInfo.CatchingUp,
+		Reachable:  true,
+		Height:     status.SyncInfo.LatestBlockHeight,
+		Latency:    time.Since(start),
 	}, nil
 }
 
@@ -95,7 +108,7 @@ func GRPCProbe(ctx context.Context, node Node) (Status, error) {
 
 	serviceClient := cmtservice.NewServiceClient(conn)
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 
 	catchingUp, err := serviceClient.GetSyncing(ctx, &cmtservice.GetSyncingRequest{})
@@ -112,13 +125,13 @@ func GRPCProbe(ctx context.Context, node Node) (Status, error) {
 		return Status{}, fmt.Errorf("getting gRPC client latest block: %w", err)
 	}
 
-	errLowBlock := block.GetInstance().SetLatestBlock(latestBlock.Block.Header.Height)
+	_ = block.GetInstance().SetLatestBlock(latestBlock.Block.Header.Height)
 
 	return Status{
-		CatchingUp:    catchingUp.Syncing,
-		Reachable:     true,
-		IsLatestBlock: errLowBlock == nil,
-		Latency:       time.Since(start),
+		CatchingUp: catchingUp.Syncing,
+		Reachable:  true,
+		Height:     latestBlock.Block.Header.Height,
+		Latency:    time.Since(start),
 	}, nil
 }
 
@@ -148,10 +161,13 @@ func RESTProbe(ctx context.Context, node Node) (s Status, retErr error) {
 		span.End()
 	}()
 
+	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+
 	start := time.Now()
 	client := &http.Client{}
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/cosmos/base/tendermint/v1beta1/syncing", node.Address), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/cosmos/base/tendermint/v1beta1/syncing", node.Address), nil)
 	if err != nil {
 		return Status{}, fmt.Errorf("creating REST client request: %w", err)
 	}
@@ -176,7 +192,7 @@ func RESTProbe(ctx context.Context, node Node) (s Status, retErr error) {
 		return Status{}, fmt.Errorf("unmarshaling body from REST client response: %w", err)
 	}
 
-	latestBlockReq, err := http.NewRequest("GET", fmt.Sprintf("%s/cosmos/base/tendermint/v1beta1/blocks/latest", node.Address), nil)
+	latestBlockReq, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/cosmos/base/tendermint/v1beta1/blocks/latest", node.Address), nil)
 	if err != nil {
 		return Status{}, fmt.Errorf("creating REST client request: %w", err)
 	}
@@ -206,12 +222,12 @@ func RESTProbe(ctx context.Context, node Node) (s Status, retErr error) {
 		return Status{}, fmt.Errorf("parsing block height: %w", err)
 	}
 
-	errLowBlock := block.GetInstance().SetLatestBlock(height)
+	_ = block.GetInstance().SetLatestBlock(height)
 
 	return Status{
-		CatchingUp:    syncing.CatchingUp,
-		Reachable:     true,
-		IsLatestBlock: errLowBlock == nil,
-		Latency:       time.Since(start),
+		CatchingUp: syncing.CatchingUp,
+		Reachable:  true,
+		Height:     height,
+		Latency:    time.Since(start),
 	}, nil
 }

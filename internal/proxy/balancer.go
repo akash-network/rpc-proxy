@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 )
@@ -65,10 +66,11 @@ func (rr *RoundRobin) NextServer(r *http.Request) *Server {
 	return nil
 }
 
-// Update updates the list of available servers.
+// Update updates the list of available servers. It clones the slice so the
+// updater cannot mutate the balancer's view in place on a later cycle.
 func (rr *RoundRobin) Update(servers []*Server) {
 	rr.mu.Lock()
-	rr.servers = servers
+	rr.servers = slices.Clone(servers)
 	rr.mu.Unlock()
 }
 
@@ -156,7 +158,7 @@ func (rr *LatencyBased) Update(servers []*Server) {
 
 	for i := range servers {
 		// Calculate the latency of the server in milliseconds
-		latency := float64(servers[i].node.Status.Latency.Milliseconds())
+		latency := float64(servers[i].latency().Milliseconds())
 		// Avoid division by zero by using a small epsilon value if latency is 0
 		if latency == 0 {
 			latency = epsilon
@@ -306,13 +308,15 @@ func (slb *StickyLatencyBased) Update(servers []*Server) {
 }
 
 // pruneInvalidSessions removes session mappings for servers that no longer exist
-// in the provided server list.
+// in the provided server list. It keys on pointer identity, not name, so a session
+// pinned to a rebuilt server (same name, new instance and address) is dropped and
+// the client re-selects the current server instead of sticking to the stale one.
 func (slb *StickyLatencyBased) pruneInvalidSessions(servers []*Server) {
 	// Create a lookup map from the input servers for O(1) lookups
-	serverExists := make(map[string]bool, len(servers))
+	serverExists := make(map[*Server]bool, len(servers))
 	for _, s := range servers {
 		if s != nil {
-			serverExists[s.name] = true
+			serverExists[s] = true
 		}
 	}
 
@@ -320,7 +324,7 @@ func (slb *StickyLatencyBased) pruneInvalidSessions(servers []*Server) {
 	defer slb.sessionMu.Unlock()
 
 	for sid, srv := range slb.sessionMap {
-		if srv == nil || !serverExists[srv.name] {
+		if srv == nil || !serverExists[srv] {
 			delete(slb.sessionMap, sid)
 			delete(slb.sessionTimestamps, sid)
 			if srv != nil {

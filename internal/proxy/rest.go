@@ -35,6 +35,7 @@ func NewRestProxy(
 	return &RestProxy{
 		Proxy: Proxy{
 			cfg:          cfg,
+			kind:         "rest",
 			ch:           ch,
 			log:          log,
 			lb:           lb,
@@ -107,15 +108,7 @@ func (p *RestProxy) Start(ctx context.Context) {
 }
 
 func (p *RestProxy) update(seed seed.Seed) {
-	p.log.Info("updating server list for REST")
-	err := p.doUpdate(seed.APIs.Rest)
-	if err != nil {
-		p.log.Error("could not update seed", "error", err)
-	}
-	p.log.Info("updated server list for REST", "total", len(p.servers))
-	metrics.UpdateNodeCount("rest", float64(len(p.servers)))
-
-	for _, node := range seed.APIs.Rest { // Update health status for each REST node
-		metrics.UpdateNodeHealth("rest", node.Address, node.Healthy())
-	}
+	p.log.Debug("updating server list for REST")
+	p.doUpdate(seed.APIs.Rest)
+	p.log.Debug("updated server list for REST", "total", len(seed.APIs.Rest))
 }

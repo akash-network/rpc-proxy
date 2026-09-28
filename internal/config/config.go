@@ -35,11 +35,12 @@ type AutocertConfig struct {
 }
 
 type SeedConfig struct {
-	URL             string        `mapstructure:"url"`
-	RefreshInterval time.Duration `mapstructure:"refresh-interval"`
-	ChainID         string        `mapstructure:"chain-id"`
-	EnableRemote    bool          `mapstructure:"enable-remote"`
-	AdditionalNodes struct {
+	URL                   string        `mapstructure:"url"`
+	RefreshInterval       time.Duration `mapstructure:"refresh-interval"`
+	HealthRefreshInterval time.Duration `mapstructure:"health-refresh-interval"`
+	ChainID               string        `mapstructure:"chain-id"`
+	EnableRemote          bool          `mapstructure:"enable-remote"`
+	AdditionalNodes       struct {
 		RPC  []string `mapstructure:"rpc"`
 		REST []string `mapstructure:"rest"`
 		GRPC []string `mapstructure:"grpc"`
@@ -55,6 +56,10 @@ type HealthConfig struct {
 	// EjectionCooldown is how long an ejected peer stays out of rotation before it
 	// becomes eligible again, subject to the seed probe still reporting it healthy.
 	EjectionCooldown time.Duration `mapstructure:"ejection-cooldown"`
+	// FreshnessTolerance is how many blocks a node may lag behind the pool's tip and
+	// still receive traffic. Zero means it must be at the tip. A node lagging by more
+	// than this is gated out of rotation until it catches up.
+	FreshnessTolerance int64 `mapstructure:"freshness-tolerance"`
 }
 
 type HaltConfig struct {

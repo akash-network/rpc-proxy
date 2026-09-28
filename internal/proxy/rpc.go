@@ -36,6 +36,7 @@ func NewRPCProxy(
 	return &RPCProxy{
 		Proxy: Proxy{
 			cfg:          cfg,
+			kind:         "rpc",
 			ch:           ch,
 			log:          log,
 			lb:           lb,
@@ -110,15 +111,7 @@ func (p *RPCProxy) Start(ctx context.Context) {
 }
 
 func (p *RPCProxy) update(seed seed.Seed) {
-	p.log.Info("updating server list for RPC")
-	err := p.doUpdate(seed.APIs.RPC)
-	if err != nil {
-		p.log.Error("could not update seed", "error", err)
-	}
-	p.log.Info("updated server list for RPC", "total", len(p.servers))
-	metrics.UpdateNodeCount("rpc", float64(len(p.servers)))
-
-	for _, node := range seed.APIs.RPC { // Update health status for each RPC node
-		metrics.UpdateNodeHealth("rpc", node.Address, node.Healthy())
-	}
+	p.log.Debug("updating server list for RPC")
+	p.doUpdate(seed.APIs.RPC)
+	p.log.Debug("updated server list for RPC", "total", len(seed.APIs.RPC))
 }
