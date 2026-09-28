@@ -192,7 +192,7 @@ func TestEnableRetry_ForwardsBodyIntact(t *testing.T) {
 		t.Fatalf("parse backend URL: %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv, _ := newServer("backend", targetURL, logger, seed.Node{}, newBreaker(0, 0))
+	srv := newServer("backend", targetURL, logger, seed.Node{}, newBreaker(0, 0))
 	proxy := newRedirectFollowingReverseProxy(srv, logger, "rpc")
 
 	r := serverReq(t, testBody)

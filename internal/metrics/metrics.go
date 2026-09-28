@@ -75,6 +75,15 @@ var RequestStatusCount *prometheus.CounterVec
 // Value is 1 if healthy, 0 if unhealthy
 var NodeHealth *prometheus.GaugeVec
 
+// NodeBlockHeight is a gauge that tracks the latest block height each node
+// reported at the last probe. It has the following labels:
+//   - type: The type of node (rest/rpc/grpc)
+//   - node: The node identifier (usually the host)
+//
+// Comparing a node's height to the pool maximum shows how far it has fallen
+// behind chain head, which is why it is gated out of rotation.
+var NodeBlockHeight *prometheus.GaugeVec
+
 // UpstreamErrors is a counter that tracks upstream transport failures per node.
 // These are requests that never received a response from the peer (reset streams,
 // dial timeouts, exceeded proxy-request-timeout), as opposed to responses with an
@@ -126,11 +135,20 @@ func init() {
 		[]string{"type", "node"},
 	)
 
+	NodeBlockHeight = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "proxy_node_block_height",
+			Help: "Latest block height each node reported at the last probe",
+		},
+		[]string{"type", "node"},
+	)
+
 	customRegistry.MustRegister(NodeCounts)
 	customRegistry.MustRegister(RequestCount)
 	customRegistry.MustRegister(RequestStatusCount)
 	customRegistry.MustRegister(NodeHealth)
 	customRegistry.MustRegister(UpstreamErrors)
+	customRegistry.MustRegister(NodeBlockHeight)
 }
 
 // SetServiceName sets the global service name for all metrics.
@@ -167,6 +185,18 @@ func UpdateNodeHealth(nodeType, node string, healthy bool) {
 		value = 1.0
 	}
 	NodeHealth.WithLabelValues(nodeType, node).Set(value)
+}
+
+// UpdateNodeBlockHeight sets the last reported block height for a specific node.
+func UpdateNodeBlockHeight(nodeType, node string, height int64) {
+	NodeBlockHeight.WithLabelValues(nodeType, node).Set(float64(height))
+}
+
+// DeleteNodeMetrics removes a node's per-node gauge series. Call it when a node
+// leaves the pool so its health and height stop reporting a frozen last value.
+func DeleteNodeMetrics(nodeType, node string) {
+	NodeHealth.DeleteLabelValues(nodeType, node)
+	NodeBlockHeight.DeleteLabelValues(nodeType, node)
 }
 
 // PrepareMetricsServer prepares a new HTTP server for Prometheus metrics.

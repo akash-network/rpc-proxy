@@ -3,10 +3,10 @@ package seed
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -58,7 +58,7 @@ func TestUpdater(t *testing.T) {
 		SeedRefreshInterval: time.Millisecond,
 		SeedURL:             srv.URL,
 		ChainID:             chainID,
-	}, slog.New(slog.NewTextHandler(os.Stdin, nil)), rpc, rest, grpc)
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), rpc, rest, grpc)
 	seeder.rpcProbe = ProbeFunc(MockProbe)
 	seeder.restProbe = ProbeFunc(MockProbe)
 	seeder.grpcProbe = ProbeFunc(MockProbe)
@@ -102,4 +102,59 @@ func MockProbe(_ context.Context, _ Node) (Status, error) {
 		CatchingUp:    false,
 		IsLatestBlock: true,
 	}, nil
+}
+
+// TestSeederProbesOnHealthInterval proves probing is decoupled from the seed-list
+// fetch: the list is fetched once on the slow cadence while probes run repeatedly on
+// the fast one, so a node falling behind head is caught within seconds.
+func TestSeederProbesOnHealthInterval(t *testing.T) {
+	chainID := "test"
+	list := Seed{ChainID: chainID, APIs: Apis{RPC: []Node{{Address: "http://rpc.local", Provider: "rpc"}}}}
+
+	var fetches atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetches.Add(1)
+		bts, _ := json.Marshal(list)
+		_, _ = w.Write(bts)
+	}))
+	t.Cleanup(srv.Close)
+
+	var probes atomic.Int64
+	countingProbe := ProbeFunc(func(_ context.Context, _ Node) (Status, error) {
+		probes.Add(1)
+		return Status{Reachable: true, Height: 100}, nil
+	})
+
+	rpc := make(chan Seed, 8)
+	rest := make(chan Seed, 8)
+	grpc := make(chan Seed, 8)
+
+	seeder := New(Config{
+		EnableRemote:          true,
+		SeedRefreshInterval:   10 * time.Second, // never fires within the test window
+		HealthRefreshInterval: 5 * time.Millisecond,
+		SeedURL:               srv.URL,
+		ChainID:               chainID,
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)), rpc, rest, grpc)
+	seeder.rpcProbe = countingProbe
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	seeder.Start(ctx)
+
+	go func() {
+		for {
+			select {
+			case <-rpc:
+			case <-rest:
+			case <-grpc:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	require.Eventually(t, func() bool { return probes.Load() >= 3 }, time.Second, 5*time.Millisecond,
+		"probing must run repeatedly on the health interval")
+	require.Equal(t, int64(1), fetches.Load(), "the seed list is fetched once, not on every probe")
 }
