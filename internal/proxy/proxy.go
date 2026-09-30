@@ -31,11 +31,15 @@ import (
 
 type Proxy struct {
 	cfg  config.HealthConfig
+	kind string
 	log  *slog.Logger
 	init sync.Once
 	ch   chan seed.Seed
 
-	servers []*Server
+	// serversMu guards the servers slice, which the updater goroutine rebuilds while
+	// request and stats goroutines read it.
+	serversMu sync.RWMutex
+	servers   []*Server
 
 	initialized  atomic.Bool
 	shuttingDown atomic.Bool
@@ -61,8 +65,12 @@ func (p *Proxy) writeHaltResponse(w http.ResponseWriter) error {
 func (p *Proxy) Live() bool { return !p.shuttingDown.Load() && p.initialized.Load() }
 
 func (p *Proxy) Stats() []ServerStat {
+	p.serversMu.RLock()
+	servers := slices.Clone(p.servers)
+	p.serversMu.RUnlock()
+
 	var result []ServerStat
-	for _, s := range p.servers {
+	for _, s := range servers {
 		reqCount := s.requestCount.Load()
 		result = append(result, ServerStat{
 			Name:        s.name,
@@ -78,60 +86,139 @@ func (p *Proxy) Stats() []ServerStat {
 	return result
 }
 
-func (p *Proxy) doUpdate(providers []seed.Node) error {
+func (p *Proxy) doUpdate(providers []seed.Node) {
+	p.serversMu.Lock()
+	defer p.serversMu.Unlock()
 
-	// add new servers
+	providers = dedupeProviders(providers, p.log)
+
+	// Ensure a server exists for each provider. Existing servers are kept so their
+	// breaker and request stats survive across health cycles; only membership in the
+	// seed list adds or removes them. Whether a server receives traffic is decided by
+	// Healthy at selection time, not by pool membership.
 	for _, provider := range providers {
-		// handle schemeless urls
-		if !strings.HasPrefix(provider.Address, "http://") && !strings.HasPrefix(provider.Address, "https://") {
-			provider.Address = fmt.Sprintf("https://%s", provider.Address)
+		// handle schemeless urls without mutating the provider, so its raw address
+		// stays usable as a stable metric label.
+		addr := provider.Address
+		if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
+			addr = fmt.Sprintf("https://%s", addr)
 		}
 
-		target, err := url.Parse(provider.Address)
+		target, err := url.Parse(addr)
 		if err != nil {
-			return err
+			// One bad address must not abort the whole update every cycle; skip it.
+			p.log.Error("skipping provider with unparseable address",
+				"name", provider.Provider, "address", provider.Address, "error", err)
+			continue
 		}
 
 		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == provider.Provider })
 		if idx == -1 {
-			srv, err := newServer(
+			p.servers = append(p.servers, newServer(
 				provider.Provider,
 				target,
-				p.log.With("server_address", provider.Address),
+				p.log.With("server_address", addr),
+				provider,
+				newBreaker(p.cfg.EjectionThreshold, p.cfg.EjectionCooldown),
+			))
+			continue
+		}
+
+		// A kept server's target URL is fixed at creation. If the seed list now maps
+		// this provider to a different address, rebuild it so traffic follows the new
+		// endpoint instead of failing forever against the stale one. Drop the old
+		// server's metric series so it does not linger frozen, and let the sticky
+		// balancer prune sessions pinned to the replaced instance (it keys on pointer).
+		if p.servers[idx].Url.String() != target.String() {
+			metrics.DeleteNodeMetrics(p.kind, p.servers[idx].addr)
+			p.log.Info("provider address changed, rebuilt server",
+				"name", provider.Provider,
+				"old", p.servers[idx].Url.String(),
+				"new", target.String())
+			p.servers[idx] = newServer(
+				provider.Provider,
+				target,
+				p.log.With("server_address", addr),
 				provider,
 				newBreaker(p.cfg.EjectionThreshold, p.cfg.EjectionCooldown),
 			)
-			if err != nil {
-				return err
-			}
-
-			p.servers = append(p.servers, srv)
 		}
 	}
 
-	// remove deleted servers
+	// Remove servers that dropped out of the seed list entirely, and clear their
+	// per-node metric series so they stop reporting a frozen last value.
 	p.servers = slices.DeleteFunc(p.servers, func(srv *Server) bool {
-		for _, provider := range providers {
-			if provider.Provider == srv.name {
-				if !provider.Healthy() { // provider matches but is unhealthy.
-					p.log.Info("unhealthy server removed from pool",
-						"name", srv.name,
-						"catching_up", provider.Status.CatchingUp,
-						"reachable", provider.Status.Reachable,
-						"latest_block", provider.Status.IsLatestBlock)
-					return true
-				}
-				return false
-			}
+		if slices.ContainsFunc(providers, func(provider seed.Node) bool { return provider.Provider == srv.name }) {
+			return false
 		}
 		p.log.Info("server was removed from pool", "name", srv.name)
+		metrics.DeleteNodeMetrics(p.kind, srv.addr)
 		return true
 	})
 
+	// The tip is the highest height reported by a servable peer this cycle (reachable
+	// and caught up). Excluding catching-up peers keeps the tip-setter itself eligible
+	// to serve, so the pool is never fully gated by a node that could not serve anyway.
+	// A node more than the freshness tolerance behind the tip is gated out until it
+	// catches up. The tip is pool-relative on purpose: it self-heals and never gates
+	// the whole pool at once. The tradeoff is that a pool lagging chain head uniformly
+	// is not gated; a true network halt is handled separately by the halt detector.
+	var tip int64
+	for _, provider := range providers {
+		if provider.Status.Reachable && !provider.Status.CatchingUp && provider.Status.Height > tip {
+			tip = provider.Status.Height
+		}
+	}
+
+	// A negative tolerance would raise the bar above the tip and gate the whole pool,
+	// so clamp it. Zero means a node must be exactly at the tip.
+	tolerance := p.cfg.FreshnessTolerance
+	if tolerance < 0 {
+		tolerance = 0
+	}
+
+	for _, provider := range providers {
+		idx := slices.IndexFunc(p.servers, func(srv *Server) bool { return srv.name == provider.Provider })
+		if idx == -1 {
+			continue
+		}
+		srv := p.servers[idx]
+		srv.setStatus(provider, tip, tolerance)
+		metrics.UpdateNodeHealth(p.kind, srv.addr, srv.Healthy())
+		metrics.UpdateNodeBlockHeight(p.kind, srv.addr, provider.Status.Height)
+	}
+
+	// proxy_node_count reports healthy nodes (per its help text). Servers now stay
+	// in the pool while gated, so count the ones actually eligible for traffic
+	// rather than the raw pool size.
+	var healthy int
+	for _, srv := range p.servers {
+		if srv.Healthy() {
+			healthy++
+		}
+	}
+	metrics.UpdateNodeCount(p.kind, float64(healthy))
+
 	p.initialized.Store(true)
 	p.lb.Update(p.servers)
+}
 
-	return nil
+// dedupeProviders keeps the first entry per provider name. The seed list is
+// community-edited; a duplicate name with a different address would otherwise make
+// doUpdate rebuild the same server every cycle, churning its breaker and sessions.
+func dedupeProviders(providers []seed.Node, log *slog.Logger) []seed.Node {
+	seen := make(map[string]bool, len(providers))
+	out := make([]seed.Node, 0, len(providers))
+	for _, provider := range providers {
+		if seen[provider.Provider] {
+			log.Warn("duplicate provider in seed list, ignoring",
+				"name", provider.Provider, "address", provider.Address)
+			continue
+		}
+		seen[provider.Provider] = true
+		out = append(out, provider)
+	}
+	return out
 }
 
 // Start initializes and begins the proxy's update loop.

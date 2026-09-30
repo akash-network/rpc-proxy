@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/akash-network/rpc-proxy/internal/config"
 	"github.com/akash-network/rpc-proxy/internal/halt"
 	"github.com/akash-network/rpc-proxy/internal/metrics"
 	proxyotel "github.com/akash-network/rpc-proxy/internal/otel"
@@ -30,12 +31,15 @@ type GRPCProxy struct {
 // configuration, logger, and a custom load balancer.
 func NewGRPCProxy(
 	ch chan seed.Seed,
+	cfg config.HealthConfig,
 	log *slog.Logger,
 	lb LoadBalancer,
 	hd *halt.Detector,
 ) *GRPCProxy {
 	return &GRPCProxy{
 		Proxy: Proxy{
+			cfg:          cfg,
+			kind:         "grpc",
 			ch:           ch,
 			log:          log,
 			lb:           lb,
@@ -126,15 +130,7 @@ func (p *GRPCProxy) Start(ctx context.Context) {
 }
 
 func (p *GRPCProxy) update(seed seed.Seed) {
-	p.log.Info("updating server list for gRPC")
-	err := p.doUpdate(seed.APIs.GRPC)
-	if err != nil {
-		p.log.Error("could not update seed", "error", err)
-	}
-	p.log.Info("updated server list for gRPC", "total", len(p.servers))
-	metrics.UpdateNodeCount("grpc", float64(len(p.servers)))
-
-	for _, node := range seed.APIs.GRPC { // Update health status for each gRPC node
-		metrics.UpdateNodeHealth("grpc", node.Address, node.Healthy())
-	}
+	p.log.Debug("updating server list for gRPC")
+	p.doUpdate(seed.APIs.GRPC)
+	p.log.Debug("updated server list for gRPC", "total", len(seed.APIs.GRPC))
 }

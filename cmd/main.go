@@ -99,6 +99,7 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	// Seed configuration
 	rootCmd.PersistentFlags().String("seed.url", "https://raw.githubusercontent.com/cosmos/chain-registry/master/akash/chain.json", "URL to fetch initial node list")
 	rootCmd.PersistentFlags().Duration("seed.refresh-interval", 5*time.Minute, "How often to refresh node list")
+	rootCmd.PersistentFlags().Duration("seed.health-refresh-interval", 5*time.Second, "How often to re-probe nodes for health and block height (falls back to refresh-interval when zero or negative)")
 	rootCmd.PersistentFlags().String("seed.chain-id", "akashnet-2", "Expected chain ID")
 	rootCmd.PersistentFlags().Bool("seed.enable-remote", true, "Enable remote seed fetching")
 	rootCmd.PersistentFlags().StringSlice("seed.additional-nodes.rpc", []string{}, "Comma-separated list of additional RPC nodes")
@@ -110,6 +111,7 @@ func NewRootCmd(v *viper.Viper) *cobra.Command {
 	rootCmd.PersistentFlags().Duration("health.proxy-request-timeout", 15*time.Second, "Timeout for proxied requests")
 	rootCmd.PersistentFlags().Int("health.ejection-threshold", 5, "Consecutive upstream transport failures before a peer is ejected (0 disables)")
 	rootCmd.PersistentFlags().Duration("health.ejection-cooldown", 30*time.Second, "How long an ejected peer stays out of rotation before it is eligible again")
+	rootCmd.PersistentFlags().Int64("health.freshness-tolerance", 2, "How many blocks a node may lag behind the pool tip and still receive traffic (0 requires the tip)")
 
 	// Halt detection configuration
 	rootCmd.PersistentFlags().Bool("halt.enabled", true, "Enable network halt detection circuit breaker")
@@ -175,10 +177,11 @@ func runProxy(cfg config.Config) error {
 	grpcListener := make(chan seed.Seed, 1)
 
 	seederCfg := seed.Config{
-		SeedURL:             cfg.Seed.URL,
-		SeedRefreshInterval: cfg.Seed.RefreshInterval,
-		ChainID:             cfg.Seed.ChainID,
-		EnableRemote:        cfg.Seed.EnableRemote,
+		SeedURL:               cfg.Seed.URL,
+		SeedRefreshInterval:   cfg.Seed.RefreshInterval,
+		HealthRefreshInterval: cfg.Seed.HealthRefreshInterval,
+		ChainID:               cfg.Seed.ChainID,
+		EnableRemote:          cfg.Seed.EnableRemote,
 		AdditionalNodes: struct {
 			RPC  []string
 			REST []string
@@ -203,7 +206,7 @@ func runProxy(cfg config.Config) error {
 
 	rpcProxyHandler := proxy.NewRPCProxy(rpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), haltDetector)
 	restProxyHandler := proxy.NewRestProxy(restListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), nil)
-	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, log, proxy.NewStickyLatencyBased(log, blockTime), nil)
+	grpcProxyHandler := proxy.NewGRPCProxy(grpcListener, cfg.Health, log, proxy.NewStickyLatencyBased(log, blockTime), nil)
 
 	ctx, proxyCtxCancel := context.WithCancel(context.Background())
 	defer proxyCtxCancel()
