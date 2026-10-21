@@ -18,6 +18,9 @@ builds:
       - windows
       - darwin
     main: ./cmd
+    hooks:
+      post:
+        - .github/scripts/check-go-version.sh "{{ .Path }}"
 
 archives:
   - format: tar.gz

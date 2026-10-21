@@ -2,6 +2,8 @@ module github.com/akash-network/rpc-proxy
 
 go 1.25.0
 
+toolchain go1.27.3
+
 require (
 	github.com/cometbft/cometbft v0.38.12
 	github.com/cosmos/cosmos-sdk v0.50.13
